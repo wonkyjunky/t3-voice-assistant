@@ -89,7 +89,9 @@ LaunchAgents ........................ 12:00 morning briefing, credit check every
 
 The assistant is a Claude Code session running inside T3 Code. Its own provider instance reads this
 repository's settings and prompt through `--settings` and `--append-system-prompt-file`. Only those
-settings contain the hook that speaks, so your other work threads stay silent.
+settings contain the hook that speaks, so your other work threads stay silent. It speaks only replies
+to what you said aloud and to automatic notices; when you type in the assistant's thread yourself,
+the reply stays in the chat.
 
 ## Requirements
 
@@ -329,7 +331,7 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 | `listen_transcript.swift` | Keeps what was said across pauses (the recognizer starts over after each one) and picks Korean or English |
 | `listen_channel.swift` | One recognizer in one language, and the recording the second language listens to |
 | `file_search.py` | The fixed file search command the assistant uses instead of shell searches (readable folders only, no secret files) |
-| `speak.py` | Stop hook that tidies replies for speech; holds them for the morning briefing at night |
+| `speak.py` | Stop hook that tidies replies for speech (not for messages typed in the chat); holds them for the morning briefing at night |
 | `voice.py` | ElevenLabs streaming playback, the Yuna fallback, the fixed phrase cache, usage |
 | `memory_hook.py` | Hands the memory notes to a new session |
 | `guard_launch.py` | Hook that keeps new threads from becoming the assistant itself |

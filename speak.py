@@ -5,9 +5,12 @@ Runs as a Claude Code Stop hook, enabled only for the assistant instance through
 `--settings assistant-settings.json` launch argument, so other Claude threads stay silent.
 Reads the hook payload from stdin, finds the last assistant text in the
 transcript, cleans it for speech, and hands it to voice.py in the background.
+Only replies to spoken messages (sent by say_to_assistant.sh) and automatic notices are spoken;
+a reply to a message typed in the T3 chat stays in the chat.
 
 Usage: speak.py [--dry]   (--dry prints the cleaned text instead of speaking)
 """
+import hashlib
 import json
 import os
 import re
@@ -27,6 +30,10 @@ import assistant_config  # noqa: E402  (this install's settings in assistant.con
 LOG_PATH = os.path.join(HERE, "speak.log")
 VOICE_SCRIPT = os.path.join(HERE, "voice.py")
 VOICE_THREAD_FILE = os.path.join(HERE, "voice-thread-id")
+# say_to_assistant.sh writes "<time> <sha256>" here for each message it sends by voice. A reply to
+# any other message the user wrote (typed in the T3 chat) is only shown there, not spoken.
+VOICE_SENT_PATH = os.path.join(HERE, "voice-sent")
+VOICE_SENT_MAX_AGE_SECONDS = 30 * 60
 THREAD_SUFFIX_CHARS = 8
 # The assistant ends a reply with this when the user wants to stop talking. It is not spoken; it tells
 # the voice conversation (say_to_assistant.sh) to stop listening.
@@ -144,25 +151,38 @@ def clean_for_speech(text):
     return cut[: last_stop + 1] if last_stop > 0 else cut
 
 
+def voice_thread_files():
+    """The voice-thread-id file of every assistant (persona.py), the main one's when that fails."""
+    try:
+        import persona
+        return [persona.value(persona_id, "thread_file") for persona_id in persona.persona_ids()]
+    except (ImportError, OSError, ValueError) as error:
+        log(f"cannot list the assistants' threads: {error}")
+        return [VOICE_THREAD_FILE]
+
+
 def is_voice_thread(payload):
-    """True when the reply came in the thread that voice conversations use.
+    """True when the reply came in a thread that voice conversations use (any assistant's).
 
     A thread without a project runs in a folder whose name ends with the last 8 characters of its
     id. Otherwise the folder T3 reports for the voice thread decides. When T3 reports none, any
-    reply counts: this hook only runs for the assistant instance anyway.
+    reply counts: this hook only runs for the assistant instances anyway.
     """
-    try:
-        with open(VOICE_THREAD_FILE, encoding="utf-8") as handle:
-            thread_id = handle.read().strip()
-    except OSError:
-        return False
-    if len(thread_id) < THREAD_SUFFIX_CHARS:
-        return False
     folder = str(payload.get("cwd") or "").rstrip("/")
-    if folder.endswith(thread_id[-THREAD_SUFFIX_CHARS:]):
-        return True
-    recorded = str(thread_record(thread_id).get("worktreePath") or "").rstrip("/")
-    return not recorded or recorded == folder
+    for path in voice_thread_files():
+        try:
+            with open(path, encoding="utf-8") as handle:
+                thread_id = handle.read().strip()
+        except OSError:
+            continue
+        if len(thread_id) < THREAD_SUFFIX_CHARS:
+            continue
+        if folder.endswith(thread_id[-THREAD_SUFFIX_CHARS:]):
+            return True
+        recorded = str(thread_record(thread_id).get("worktreePath") or "").rstrip("/")
+        if not recorded or recorded == folder:
+            return True
+    return False
 
 
 def take_end_tag(text):
@@ -218,6 +238,8 @@ def speak(text, follow_up=False):
 # Messages from other threads ([마일스톤]) and from the voice system itself ([알림], such as the
 # ElevenLabs credit alert from credit_alert.py) wait for the morning during quiet hours.
 REPORT_PREFIX = ("[마일스톤]", "[알림]")
+# Messages the voice system writes itself; they are spoken like the ones the user says aloud.
+AUTOMATIC_PREFIX = REPORT_PREFIX + ("[아침 브리핑]",)
 
 
 def last_user_text(transcript_path):
@@ -248,6 +270,35 @@ def answers_a_report(transcript_path):
         return last_user_text(transcript_path).lstrip().startswith(REPORT_PREFIX)
     except OSError:
         return False
+
+
+def sent_by_voice(text, now=None):
+    """True when say_to_assistant.sh sent exactly this text a short while ago."""
+    wanted = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    now = time.time() if now is None else now
+    try:
+        with open(VOICE_SENT_PATH, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        parts = line.split()
+        if len(parts) != 2 or not parts[0].isdigit():
+            continue
+        if parts[1] == wanted and now - int(parts[0]) <= VOICE_SENT_MAX_AGE_SECONDS:
+            return True
+    return False
+
+
+def typed_in_chat(transcript_path, now=None):
+    """True when the message being answered was typed in the chat, not said aloud or automatic."""
+    try:
+        text = last_user_text(transcript_path)
+    except OSError:
+        return False
+    if text.lstrip().startswith(AUTOMATIC_PREFIX):
+        return False
+    return not sent_by_voice(text, now)
 
 
 def read_reply_with_retry(transcript_path, final_part=""):
@@ -303,6 +354,9 @@ def main():
         return 0
     if dry_run:
         print(text)
+        return 0
+    if typed_in_chat(transcript_path):
+        log("typed in the chat: the reply stays in the chat, not spoken")
         return 0
     text, closes = take_end_tag(text)
     if not text:

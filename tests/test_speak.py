@@ -20,9 +20,12 @@ class VoiceThreadTests(unittest.TestCase):
         speak.VOICE_THREAD_FILE = str(self.id_file)
         self.record = {}
         speak.thread_record = lambda thread_id: self.record
+        self.saved_files = speak.voice_thread_files
+        speak.voice_thread_files = lambda: [speak.VOICE_THREAD_FILE]
 
     def tearDown(self):
         speak.VOICE_THREAD_FILE, speak.thread_record = self.saved
+        speak.voice_thread_files = self.saved_files
 
     def test_scratch_folder_ending_in_the_id_is_the_voice_thread(self):
         self.assertTrue(speak.is_voice_thread({"cwd": "/x/scratch/2026-01-01-3c4d5e6f"}))

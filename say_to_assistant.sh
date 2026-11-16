@@ -56,6 +56,10 @@ END_FLAG="$HERE/conversation-end"
 # arriving again inside this window count as silence. Only a hash and a time are kept on disk.
 REPEAT_WINDOW_SECONDS="${REPEAT_WINDOW_SECONDS:-90}"
 LAST_FILE="$VOICE_DIR/last-sent"
+# The hash and time of each message sent from here. speak.py reads a reply aloud only when its
+# message came this way (or is an automatic notice); replies to words typed in the chat stay there.
+VOICE_SENT="$VOICE_DIR/voice-sent"
+VOICE_SENT_KEEP=20
 # What the user said, for the caption bubble next to the avatar. Only the user can read it, and it is removed
 # when this turn is over (the avatar keeps the words on screen a few seconds from memory).
 CAPTION_FILE="$VOICE_DIR/caption-user.txt"
@@ -174,6 +178,8 @@ if [ -z "$thread_id" ]; then
   exit 1
 fi
 
+( umask 077 && { tail -n $((VOICE_SENT_KEEP - 1)) "$VOICE_SENT" 2>/dev/null; printf '%s %s\n' "$now" "$text_hash"; } \
+  > "$VOICE_SENT.tmp" && mv -f "$VOICE_SENT.tmp" "$VOICE_SENT" )
 speech_starts_before="$(count_speech_starts)"
 sent_at="$(date +%s)"
 if ! printf '%s' "$text" | "$T3" thread send "$thread_id" - >/dev/null 2>>"$LOG"; then
