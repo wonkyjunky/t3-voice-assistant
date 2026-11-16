@@ -307,6 +307,11 @@ class YoutubeTests(unittest.TestCase):
         run_cli(["youtube", "play", "아이유"], runner, fetch=lambda url: SEARCH_PAGE)
         self.assertEqual(runner.calls[2][-1], "pause", "the playing Music app is paused")
 
+    def test_leave_others_starts_music_without_pausing_elsewhere(self):
+        runner = FakeRunner((0, "resumed"))
+        self.assertEqual(run_cli(["--leave-others", "youtube", "resume"], runner), mc.EXIT_OK)
+        self.assertEqual(len(runner.calls), 1, "no state checks, no pausing: only the resume itself")
+
     def test_youtube_volume_sets_chrome_tabs(self):
         runner = FakeRunner((0, "set"))
         self.assertEqual(run_cli(["youtube", "volume", "40"], runner), mc.EXIT_OK)

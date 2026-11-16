@@ -178,22 +178,24 @@ do {
     let musicSong = NowPlaying(title: "x", detail: "Music", source: .music, isPlaying: true, volume: 54)
     expect(controls(for: .youtube) == [.playPause, .next], "YouTube gets play/pause and next")
     expect(controls(for: .music) == [.previous, .playPause, .next], "Music gets previous, play/pause and next")
-    expect(macControlArguments(for: .playPause, on: song) == ["youtube", "pause"], "a playing song's button pauses it")
-    expect(macControlArguments(for: .playPause, on: song.with(isPlaying: false)) == ["youtube", "resume"],
+    expect(macControlArguments(for: .playPause, on: song) == ["--leave-others", "youtube", "pause"],
+           "a playing song's button pauses it, and only it")
+    expect(macControlArguments(for: .playPause, on: song.with(isPlaying: false)) == ["--leave-others", "youtube", "resume"],
            "a paused song's button plays it again")
-    expect(macControlArguments(for: .playPause, on: musicSong.with(isPlaying: false)) == ["music", "play"],
-           "Music's play button uses play, which pauses music elsewhere first")
-    expect(macControlArguments(for: .previous, on: musicSong) == ["music", "previous"], "Music goes back a song")
+    expect(macControlArguments(for: .playPause, on: musicSong.with(isPlaying: false)) == ["--leave-others", "music", "play"],
+           "Music's play button plays Music without pausing the other row")
+    expect(macControlArguments(for: .previous, on: musicSong) == ["--leave-others", "music", "previous"], "Music goes back a song")
     expect(macControlVolumeArguments(70, on: musicSong) == ["music", "volume", "70"], "Music's slider sets Music's volume")
     expect(macControlVolumeArguments(140, on: song) == ["youtube", "volume", "100"], "a level past the end is held to 100")
     let pausedVideo = song.with(isPlaying: false)
-    expect(pickNowPlaying([pausedVideo, musicSong], shownBefore: .youtube) == musicSong,
-           "the card shows what plays, not a paused tab found first")
-    let pausedMusic = musicSong.with(isPlaying: false)
-    expect(pickNowPlaying([pausedVideo, pausedMusic], shownBefore: .music) == pausedMusic,
-           "with everything paused the card keeps showing what it showed")
-    expect(pickNowPlaying([], shownBefore: .music) == nil, "nothing anywhere shows nothing")
     let now = Date()
+    expect(visibleRows([song, musicSong], lastPlayingAt: [:], now: now) == [song, musicSong],
+           "a video and music playing together each get a row")
+    expect(visibleRows([pausedVideo, musicSong], lastPlayingAt: [.youtube: now.addingTimeInterval(-(pausedCardSeconds + 5))], now: now)
+           == [musicSong], "a row paused long ago goes away")
+    expect(visibleRows([pausedVideo, musicSong], lastPlayingAt: [.youtube: now.addingTimeInterval(-10)], now: now)
+           == [pausedVideo, musicSong], "a row paused a moment ago stays, in the same order")
+    expect(visibleRows([], lastPlayingAt: [:], now: now).isEmpty, "nothing anywhere shows nothing")
     expect(cardShows(song, lastPlayingAt: nil, now: now), "a playing song shows")
     expect(cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-30), now: now),
            "a song paused half a minute ago still shows, to be played again")

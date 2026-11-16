@@ -19,7 +19,8 @@ run argument, never inside the script source, so it cannot inject AppleScript.
   app open <name> | app quit <name>
 
 Music plays in one place at a time: music play | song | playlist and youtube play | resume pause
-music playing in the other place first (music_sources.py). music song plays from the Apple Music
+music playing in the other place first (music_sources.py). --leave-others (before the command)
+skips that, for the now-playing card, where each place has its own buttons. music song plays from the Apple Music
 catalog (apple_music.py, needs an Apple Music subscription) when the song is not in the library.
 
 youtube play reads YouTube's search page to find the first video. When YouTube cannot be reached
@@ -254,6 +255,7 @@ class Context:
     fetch: Callable[[str], Optional[str]]
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
+    leave_others: bool = False
 
 
 class UsageError(Exception):
@@ -670,6 +672,8 @@ def handle_app(options, ctx):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="mac_control.py", description="the assistant's Mac controls")
+    parser.add_argument("--leave-others", action="store_true",
+                        help="do not pause music playing elsewhere (the now-playing card)")
     groups = parser.add_subparsers(dest="group", required=True)
     volume = groups.add_parser("volume")
     volume.add_argument("action", choices=["get", "up", "down", "mute", "unmute", "set"])
@@ -699,7 +703,7 @@ def main(argv=None, runner=system_runner, state_dir=DEFAULT_STATE_DIR, fetch=fet
     except SystemExit as stop:
         return EXIT_OK if stop.code == 0 else EXIT_USAGE
     try:
-        return HANDLERS[options.group](options, Context(runner, state_dir, fetch, sleep, clock))
+        return HANDLERS[options.group](options, Context(runner, state_dir, fetch, sleep, clock, options.leave_others))
     except UsageError as error:
         print(f"mac_control: {error}", file=sys.stderr)
         return EXIT_USAGE

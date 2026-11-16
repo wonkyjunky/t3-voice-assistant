@@ -43,6 +43,8 @@ def states(ctx, sources):
 
 def pause_others(ctx, sources, keep):
     """Pauses music playing anywhere but keep (a source name), before music starts there."""
+    if getattr(ctx, "leave_others", False):
+        return
     for source, state in states(ctx, sources):
         if source.name != keep and state == PLAYING:
             source.pause(ctx)

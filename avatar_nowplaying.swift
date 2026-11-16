@@ -69,20 +69,16 @@ func controls(for source: NowPlayingSource) -> [NowPlayingControl] {
     }
 }
 
-/// The mac_control.py command a button runs.
+/// The mac_control.py command a button runs. Each row of the card controls only its own place, so
+/// --leave-others keeps the music elsewhere playing.
 func macControlArguments(for control: NowPlayingControl, on playing: NowPlaying) -> [String] {
-    if playing.source == .music {
-        switch control {
-        case .previous: return ["music", "previous"]
-        case .next: return ["music", "next"]
-        // play (not toggle), so mac_control.py pauses music playing elsewhere first.
-        case .playPause: return ["music", playing.isPlaying ? "pause" : "play"]
-        }
-    }
+    let verb: String
     switch control {
-    case .playPause: return ["youtube", playing.isPlaying ? "pause" : "resume"]
-    case .next, .previous: return ["youtube", "next"]
+    case .playPause: verb = playing.isPlaying ? "pause" : (playing.source == .music ? "play" : "resume")
+    case .next: verb = "next"
+    case .previous: verb = playing.source == .music ? "previous" : "next"
     }
+    return ["--leave-others", playing.source == .music ? "music" : "youtube", verb]
 }
 
 /// Whether the card shows: always while playing, and for pausedCardSeconds after the song was
@@ -191,10 +187,10 @@ private func output(of executable: String, _ arguments: [String]) -> String? {
     return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-/// Which of the places with music the card shows: one that plays (in the order found), else the
-/// place it showed before, else the first paused one.
-func pickNowPlaying(_ found: [NowPlaying], shownBefore: NowPlayingSource?) -> NowPlaying? {
-    found.first { $0.isPlaying } ?? found.first { $0.source == shownBefore } ?? found.first
+/// The rows the card shows, one per place with music, in the order found: each while it plays and
+/// for pausedCardSeconds after it was last seen playing.
+func visibleRows(_ found: [NowPlaying], lastPlayingAt: [NowPlayingSource: Date], now: Date) -> [NowPlaying] {
+    found.filter { cardShows($0, lastPlayingAt: lastPlayingAt[$0.source], now: now) }
 }
 
 /// Every place with music now: a YouTube tab in Chrome, the Music app.
