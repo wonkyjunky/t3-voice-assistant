@@ -27,7 +27,7 @@ STOREFRONT = "us"
 SEARCH_LIMIT = 5
 LAUNCH_WAIT_SECONDS = 10
 PAGE_LOAD_SECONDS = 1.5
-PLAY_WAIT_SECONDS = 12
+PLAY_WAIT_SECONDS = 20
 RETRY_SECONDS = 0.5
 SKIP_SECONDS = 0.6
 # Now and then Music does not take the opened page; with no track this long, it is opened again.
@@ -44,6 +44,19 @@ READY_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to return player state 
 STOP_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to stop'
 PLAY_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to play'
 NEXT_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to next track'
+# Skips argument 1 tracks ahead in one go (to a song's place in its album).
+SKIP_AHEAD_SCRIPT = f"""
+on run argv
+    tell application id "{MUSIC_BUNDLE_ID}"
+        repeat ((item 1 of argv) as integer) times
+            next track
+            delay 0.1
+        end repeat
+    end tell
+end run
+"""
+# Versions without the singing, played only when the words ask for one.
+BACKING_TRACK_WORDS = ("instrumental", "inst.", "(inst)", "karaoke", "mr)", "mr ver", "반주")
 REWIND_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to set player position to 0'
 GET_VOLUME_SCRIPT = f'tell application id "{MUSIC_BUNDLE_ID}" to return sound volume'
 SET_VOLUME_SCRIPT = f"""
@@ -139,10 +152,29 @@ def parse_songs(text):
         track, album = result.get("trackId"), result.get("collectionId")
         if isinstance(track, int) and isinstance(album, int) and result.get("trackName"):
             count = result.get("trackCount")
+            number = result.get("trackNumber")
+            first_disc = result.get("discNumber") in (None, 1)
             songs.append({"track": track, "album": album, "name": result["trackName"],
                           "artist": result.get("artistName", ""),
-                          "count": count if isinstance(count, int) and count > 0 else DEFAULT_TRACK_COUNT})
+                          "count": count if isinstance(count, int) and count > 0 else DEFAULT_TRACK_COUNT,
+                          # Where the song sits in the album, when that is the place play reaches.
+                          "number": number if isinstance(number, int) and number > 0 and first_disc else None})
     return songs
+
+
+def pick_song(songs, words):
+    """The search result to play: one with the singing unless the words ask for a backing track,
+    and one whose title the words name, keeping Apple's order otherwise."""
+    asked = words.casefold()
+    wants_backing = any(word in asked for word in BACKING_TRACK_WORDS)
+
+    def score(song):
+        name = song["name"].casefold()
+        backing = any(word in name for word in BACKING_TRACK_WORDS)
+        named = name in asked or name.split(" (")[0] in asked
+        return (backing == wants_backing) * 2 + named
+
+    return max(songs, key=score) if songs else None
 
 
 def song_link(song):
@@ -182,12 +214,14 @@ def current_name(runner):
 
 
 def find_in_album(runner, song, sleep, clock):
-    """Plays the opened album and skips ahead to the song; True once Music is on it."""
+    """Plays the opened album and skips ahead to the song; True once Music is on it. It first jumps
+    straight to the song's place in the album, then steps one track at a time if that missed."""
     skips_left = song["count"]
     empty_since = clock()
+    jumped = False
 
     def on_song():
-        nonlocal skips_left, empty_since
+        nonlocal skips_left, empty_since, jumped
         name = current_name(runner)
         if name is None:
             if clock() - empty_since >= REOPEN_SECONDS:
@@ -198,6 +232,11 @@ def find_in_album(runner, song, sleep, clock):
             return False
         if name.casefold() == song["name"].casefold():
             return True
+        if not jumped and song.get("number") and song["number"] > 1:
+            jumped = True
+            osa(runner, SKIP_AHEAD_SCRIPT, str(song["number"] - 1))
+            sleep(SKIP_SECONDS)
+            return False
         if skips_left <= 0:
             return False
         skips_left -= 1
@@ -241,7 +280,7 @@ def play_from_catalog(words, runner, fetch, sleep, clock, before=None, spawn=Non
     if not start_hidden(runner, sleep, clock):
         print("the Music app did not start")
         return EXIT_FAILED
-    song = songs[0]
+    song = pick_song(songs, words)
     if spawn is not None and before != MUSIC_BUNDLE_ID:
         spawn([OSASCRIPT, "-l", "JavaScript", "-e", HIDE_LOOP_JS, str(HIDE_LOOP_SECONDS)])
     played = play_song(runner, song, sleep, clock, before)

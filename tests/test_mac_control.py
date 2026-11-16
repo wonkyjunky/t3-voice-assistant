@@ -115,6 +115,8 @@ class MusicApp:
         self.volumes = []
         self.front = front
         self.put_out_of_sight = []
+        self.skips = 0
+        self.jumps = []
         self.calls = []
 
     def __call__(self, args):
@@ -144,6 +146,12 @@ class MusicApp:
             return mc.Result(0, "")
         if script.endswith(" to next track") and self.playing:
             self.playing = self.page[(self.page.index(self.playing) + 1) % len(self.page)]
+            self.skips += 1
+            return mc.Result(0, "")
+        if "repeat ((item 1 of argv)" in script and self.playing:
+            ahead = int(args[-1])
+            self.playing = self.page[(self.page.index(self.playing) + ahead) % len(self.page)]
+            self.jumps.append(ahead)
             return mc.Result(0, "")
         if script.endswith(" to stop"):
             self.playing = None
@@ -230,6 +238,23 @@ class MusicTests(unittest.TestCase):
         run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER, spawned=spawned)
         self.assertEqual(runner.put_out_of_sight, [], "the user is using Music, so it stays")
         self.assertEqual(spawned.started, [])
+
+    def test_a_song_far_into_its_album_is_reached_in_one_jump(self):
+        album = [f"Track {n}" for n in range(1, 12)]
+        album[4] = "선물"
+        runner = MusicApp(running=True, loads_after=0, album=album)
+        answer = ('{"results":[{"trackId":2,"collectionId":1,"trackName":"선물","artistName":"UN",'
+                  '"trackNumber":5,"trackCount":11,"discNumber":1}]}')
+        self.assertEqual(run_cli(["music", "song", "유엔 선물"], runner, fetch=lambda url: answer), mc.EXIT_OK)
+        self.assertEqual(runner.playing, "선물")
+        self.assertEqual((runner.jumps, runner.skips), ([4], 0), "straight to track 5, no stepping")
+
+    def test_the_sung_version_is_picked_over_a_backing_track(self):
+        songs = mc.apple_music.parse_songs(
+            '{"results":[{"trackId":1,"collectionId":9,"trackName":"선물 (Instrumental)","trackNumber":11},'
+            '{"trackId":2,"collectionId":9,"trackName":"선물","trackNumber":5}]}')
+        self.assertEqual(mc.apple_music.pick_song(songs, "유엔 선물")["name"], "선물")
+        self.assertEqual(mc.apple_music.pick_song(songs, "유엔 선물 instrumental")["name"], "선물 (Instrumental)")
 
     def test_closed_music_app_is_started_hidden(self):
         runner = MusicApp(running=False, loads_after=0)
