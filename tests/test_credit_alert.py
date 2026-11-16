@@ -83,5 +83,24 @@ class MainTests(unittest.TestCase):
         self.assertEqual(len(self.sent), 1)
 
 
+class VoiceThreadTests(unittest.TestCase):
+    def setUp(self):
+        self.saved = (ca.persona.current_id, ca.persona.value)
+
+    def tearDown(self):
+        ca.persona.current_id, ca.persona.value = self.saved
+
+    def test_the_alert_goes_to_the_assistant_in_use(self):
+        ca.persona.current_id = lambda: "second"
+        ca.persona.value = lambda persona_id, key: f"/x/personas/{persona_id}/voice-thread-id"
+        self.assertEqual(ca.voice_thread_file(), Path("/x/personas/second/voice-thread-id"))
+
+    def test_unreadable_persona_files_fall_back_to_the_main_thread(self):
+        def broken():
+            raise ValueError("bad conf")
+        ca.persona.current_id = broken
+        self.assertEqual(ca.voice_thread_file(), ca.DEFAULT_ID_FILE)
+
+
 if __name__ == "__main__":
     unittest.main()

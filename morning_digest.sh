@@ -1,6 +1,7 @@
 #!/bin/bash
 # Morning briefing: hands what the assistant kept quietly overnight (night-digest.txt, written by
-# speak.py during quiet hours) to its voice thread, so it greets and sums it up aloud.
+# speak.py during quiet hours) to the voice thread of the assistant picked in the avatar's menu
+# (persona.py), so the one whose voice and face are in use greets and sums it up aloud.
 #
 # Run every day at 12:00 by the LaunchAgent local.voice-assistant.morning (if the Mac was asleep,
 # launchd runs it at the next wake). Does nothing when there is no news.
@@ -13,7 +14,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 [ -f "$HERE/assistant.conf" ] && source "$HERE/assistant.conf"
 DIGEST="$HERE/night-digest.txt"
-ID_FILE="$HERE/voice-thread-id"
+ID_FILE="$(/opt/homebrew/bin/python3 -I "$HERE/persona.py" get thread_file 2>/dev/null || true)"
+[ -n "$ID_FILE" ] || ID_FILE="$HERE/voice-thread-id"
+# The assistant in use may call the user differently (USER_CALL_KO in its persona.conf).
+PERSONA_CALL="$(/opt/homebrew/bin/python3 -I "$HERE/persona.py" get USER_CALL_KO 2>/dev/null || true)"
+[ -n "$PERSONA_CALL" ] && USER_CALL_KO="$PERSONA_CALL"
 LOG="$HERE/voice.log"
 T3="${T3_BIN:-$HOME/.local/bin/t3}"
 HEADER="[아침 브리핑] 밤사이 조용히 받아 둔 소식이야. ${USER_CALL_KO:-사용자}한테 아침 인사와 함께 두세 문장으로 정리해서 알려 줘."

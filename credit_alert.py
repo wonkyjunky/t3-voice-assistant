@@ -8,7 +8,8 @@ The limit is the smaller of the account's monthly characters and ELEVENLABS_KEY_
 assistant.conf, the monthly cap set on the API key itself (0 means the key has no cap). ElevenLabs has no call that reports a key's own use, so the
 account's use stands in for it; use outside this key makes the alert come early, never late.
 
-The alert goes to the voice thread as a message starting with [알림]. speak.py treats it like a
+The alert goes to the voice thread of the assistant picked in the avatar's menu (persona.py) as
+a message starting with [알림]. speak.py treats it like a
 milestone report, so during quiet hours it waits for the morning briefing.
 Logs only that an alert was sent, never the API key.
 """
@@ -24,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import assistant_config  # noqa: E402
+import persona  # noqa: E402  (the assistant in use and its thread)
 import voice  # noqa: E402  (api_key, SUBSCRIPTION_URL)
 
 ALERT_PREFIX = "[알림]"
@@ -35,7 +37,7 @@ USER_CALL = assistant_config.get("USER_CALL_KO", "사용자")
 FETCH_TIMEOUT_SECONDS = 10
 SEND_TIMEOUT_SECONDS = 30
 STATE_PATH = HERE / "credit-alert.state"
-ID_FILE = HERE / "voice-thread-id"
+DEFAULT_ID_FILE = HERE / "voice-thread-id"
 LOG_PATH = HERE / "voice.log"
 T3 = assistant_config.get("T3_BIN", str(Path.home() / ".local/bin/t3"))
 
@@ -90,9 +92,18 @@ def fetch_subscription():
         return None
 
 
+def voice_thread_file():
+    """The thread of the assistant in use, the main one's when the persona files cannot be read."""
+    try:
+        return Path(persona.value(persona.current_id(), "thread_file"))
+    except (OSError, ValueError, KeyError) as error:
+        log(f"cannot read the assistant in use ({type(error).__name__}), using the main thread")
+        return DEFAULT_ID_FILE
+
+
 def send_to_voice_thread(text):
     try:
-        thread_id = ID_FILE.read_text().strip()
+        thread_id = voice_thread_file().read_text().strip()
     except OSError:
         thread_id = ""
     if not thread_id:
