@@ -205,5 +205,18 @@ do {
     expect(!cardShows(nil, lastPlayingAt: now, now: now), "nothing playing hides")
 }
 
+// Which way the card grows: away from the nearer screen edge, never off the screen.
+do {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    expect(cardBottom(top: 860, bottom: 776, height: 168, visible: screen) == 692,
+           "high on the screen the card hangs down from its top, so a new row goes below")
+    expect(cardBottom(top: 124, bottom: 40, height: 168, visible: screen) == 40,
+           "low on the screen the card rises from its bottom, so a new row goes above")
+    expect(cardBottom(top: 120, bottom: 20, height: 84, visible: NSRect(x: 0, y: 30, width: 1440, height: 870)) == 30,
+           "it never sinks below the visible screen")
+    expect(cardBottom(top: 900, bottom: 800, height: 252, visible: NSRect(x: 0, y: 0, width: 1440, height: 875)) == 623,
+           "it never rises past the menu bar")
+}
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

@@ -81,6 +81,15 @@ func macControlArguments(for control: NowPlayingControl, on playing: NowPlaying)
     return ["--leave-others", playing.source == .music ? "music" : "youtube", verb]
 }
 
+/// The y of the card's bottom edge, for a card of this height placed by something spanning top to
+/// bottom (the avatar's photo, or the card's own frame where it was left): in the upper half of the
+/// screen the card hangs down from top, in the lower half it rises from bottom, so new rows grow
+/// away from the nearer screen edge. It never leaves the visible screen.
+func cardBottom(top: CGFloat, bottom: CGFloat, height: CGFloat, visible: NSRect) -> CGFloat {
+    let y = (top + bottom) / 2 < visible.midY ? bottom : top - height
+    return min(max(y, visible.minY), visible.maxY - height)
+}
+
 /// Whether the card shows: always while playing, and for pausedCardSeconds after the song was
 /// last seen playing.
 func cardShows(_ playing: NowPlaying?, lastPlayingAt: Date?, now: Date) -> Bool {

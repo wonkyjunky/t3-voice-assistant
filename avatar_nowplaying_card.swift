@@ -29,29 +29,34 @@ let nowPlayingRecheckSeconds: TimeInterval = 0.6
 // After a slider moves, checks keep its level this long (an answer asked before may be older).
 let volumeHoldSeconds: TimeInterval = 2.5
 let macControlPython = "/opt/homebrew/bin/python3"
-// Where the card's top left corner was left. (The older key held the bottom left corner of a card
-// that had one height only; it is dropped when the card is put back.)
-let nowPlayingTopLeftDefaultsKey = "nowPlayingTopLeft"
-let oldNowPlayingOriginDefaultsKey = "nowPlayingOrigin"
+// The card's frame where it was left. (Older keys held one corner only; they are dropped when the
+// card is put back.)
+let nowPlayingFrameDefaultsKey = "nowPlayingFrame"
+let oldNowPlayingDefaultsKeys = ["nowPlayingTopLeft", "nowPlayingOrigin"]
 let cardDragThreshold: CGFloat = 3
 
 func cardHeight(rows: Int) -> CGFloat {
     CGFloat(max(rows, 1)) * nowPlayingRowHeight
 }
 
-/// Where the card's top left corner was left when it was taken off the avatar, or nil while it
-/// sits beside the avatar.
-func detachedNowPlayingTopLeft() -> NSPoint? {
-    guard let saved = UserDefaults.standard.string(forKey: nowPlayingTopLeftDefaultsKey) else { return nil }
-    let topLeft = NSPointFromString(saved)
-    let firstRow = NSRect(x: topLeft.x, y: topLeft.y - nowPlayingRowHeight, width: nowPlayingWidth, height: nowPlayingRowHeight)
+/// The card's frame where it was left when it was taken off the avatar, or nil while it sits
+/// beside the avatar.
+func detachedNowPlayingFrame() -> NSRect? {
+    guard let saved = UserDefaults.standard.string(forKey: nowPlayingFrameDefaultsKey) else { return nil }
+    let frame = NSRectFromString(saved)
     // A screen that is gone (an unplugged display) puts the card back on the avatar.
-    return NSScreen.screens.contains { $0.visibleFrame.intersects(firstRow) } ? topLeft : nil
+    return NSScreen.screens.contains { $0.visibleFrame.intersects(frame) } ? frame : nil
 }
 
 func attachNowPlayingToAvatar() {
-    UserDefaults.standard.removeObject(forKey: nowPlayingTopLeftDefaultsKey)
-    UserDefaults.standard.removeObject(forKey: oldNowPlayingOriginDefaultsKey)
+    for key in [nowPlayingFrameDefaultsKey] + oldNowPlayingDefaultsKeys {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+private func visibleFrame(around rect: NSRect) -> NSRect {
+    let screen = NSScreen.screens.first { $0.frame.intersects(rect) } ?? NSScreen.main
+    return screen?.visibleFrame ?? rect
 }
 
 /// A button that works on the first click even though the avatar app never becomes active.
@@ -81,7 +86,8 @@ final class NowPlayingRow: NSView {
     private let volumeSlider = CardSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: nil)
     private let badge = CALayer()
     private let badgeText = NSTextField(labelWithString: "▶")
-    private let titleField = NSTextField(labelWithString: "")
+    // A long title slides past instead of being cut short (avatar_marquee.swift).
+    private let titleField = MarqueeField(font: .systemFont(ofSize: 12, weight: .semibold), color: .white)
     private let detailField = NSTextField(labelWithString: "")
     private var bars: [CALayer] = []
     private var buttons: [(NowPlayingControl, CardButton)] = []
@@ -98,14 +104,13 @@ final class NowPlayingRow: NSView {
         badgeText.font = .systemFont(ofSize: 11, weight: .bold)
         badgeText.textColor = .white
         addSubview(badgeText)
-        for (field, y, font, color) in [(titleField, 28.0, NSFont.systemFont(ofSize: 12, weight: .semibold), NSColor.white),
-                                        (detailField, 11.0, NSFont.systemFont(ofSize: 11), NSColor(calibratedWhite: 1, alpha: 0.6))] {
-            field.frame = NSRect(x: 56, y: top + y, width: 100, height: 16)
-            field.font = font
-            field.textColor = color
-            field.lineBreakMode = .byTruncatingTail
-            addSubview(field)
-        }
+        titleField.frame = NSRect(x: 56, y: top + 28, width: 100, height: 16)
+        addSubview(titleField)
+        detailField.frame = NSRect(x: 56, y: top + 11, width: 100, height: 16)
+        detailField.font = .systemFont(ofSize: 11)
+        detailField.textColor = NSColor(calibratedWhite: 1, alpha: 0.6)
+        detailField.lineBreakMode = .byTruncatingTail
+        addSubview(detailField)
         setUpBars()
         setUpVolumeLine(height: top)
     }
@@ -201,8 +206,8 @@ final class NowPlayingRow: NSView {
             x -= nowPlayingButtonGap
         }
         let wordsWidth = max(0, x - 6 - titleField.frame.minX)
-        for field in [titleField, detailField] {
-            field.frame.size.width = wordsWidth
+        for field: NSView in [titleField, detailField] {
+            field.setFrameSize(NSSize(width: wordsWidth, height: field.frame.height))
         }
     }
 
@@ -304,7 +309,7 @@ final class NowPlayingCardView: NSView {
         guard isDragging else { return }
         isDragging = false
         if let frame = window?.frame {
-            UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: frame.minX, y: frame.maxY)), forKey: nowPlayingTopLeftDefaultsKey)
+            UserDefaults.standard.set(NSStringFromRect(frame), forKey: nowPlayingFrameDefaultsKey)
         }
     }
 }
@@ -360,7 +365,8 @@ final class NowPlayingCard {
         if !view.isDragging {
             let height = cardHeight(rows: rows.count)
             let origin = photo.map { self.origin(next: $0, height: height) }
-                ?? NSPoint(x: panel.frame.minX, y: panel.frame.maxY - height)
+                ?? NSPoint(x: panel.frame.minX, y: cardBottom(top: panel.frame.maxY, bottom: panel.frame.minY,
+                                                              height: height, visible: visibleFrame(around: panel.frame)))
             panel.setFrame(NSRect(x: origin.x, y: origin.y, width: nowPlayingWidth, height: height), display: false)
         }
         view.show(rows)
@@ -369,7 +375,7 @@ final class NowPlayingCard {
 
     /// Moves the card along while the avatar is dragged, between ticks (not when it was set apart).
     func follow(photo: NSRect) {
-        guard visible, detachedNowPlayingTopLeft() == nil else { return }
+        guard visible, detachedNowPlayingFrame() == nil else { return }
         panel.setFrameOrigin(origin(next: photo, height: panel.frame.height))
     }
 
@@ -456,15 +462,16 @@ final class NowPlayingCard {
         }
     }
 
-    // Beside the photo, toward the middle of the screen, its top level with the photo's top so it
-    // stays clear of the caption bubbles below; or where it was left, its top staying put as rows
-    // come and go.
+    // Beside the photo, toward the middle of the screen, level with the photo's top (or, low on the
+    // screen, its bottom); or where it was left. Rows grow away from the nearer screen edge.
     private func origin(next photo: NSRect, height: CGFloat) -> NSPoint {
-        if let topLeft = detachedNowPlayingTopLeft() { return NSPoint(x: topLeft.x, y: topLeft.y - height) }
-        let screen = NSScreen.screens.first { $0.frame.intersects(photo) } ?? NSScreen.main
-        let middle = screen?.visibleFrame.midX ?? photo.midX
-        let x = photo.midX > middle ? photo.minX - nowPlayingGap - nowPlayingWidth : photo.maxX + nowPlayingGap
-        return NSPoint(x: x, y: photo.maxY - height)
+        if let left = detachedNowPlayingFrame() {
+            let y = cardBottom(top: left.maxY, bottom: left.minY, height: height, visible: visibleFrame(around: left))
+            return NSPoint(x: left.minX, y: y)
+        }
+        let visible = visibleFrame(around: photo)
+        let x = photo.midX > visible.midX ? photo.minX - nowPlayingGap - nowPlayingWidth : photo.maxX + nowPlayingGap
+        return NSPoint(x: x, y: cardBottom(top: photo.maxY, bottom: photo.minY, height: height, visible: visible))
     }
 
     private func show() {

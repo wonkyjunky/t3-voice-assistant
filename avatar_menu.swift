@@ -131,7 +131,7 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         add(ui("Show captions", "자막 보이기"), #selector(toggleCaptions), checked: captionsShown(), to: menu)
         add(ui("Show sound bars", "소리 막대 보이기"), #selector(toggleMeter), checked: meterShown(), to: menu)
         add(ui("Show now playing", "재생 중 보이기"), #selector(toggleNowPlaying), checked: nowPlayingShown(), to: menu)
-        if detachedNowPlayingTopLeft() != nil {
+        if detachedNowPlayingFrame() != nil {
             add(ui("Attach now playing to avatar", "재생 카드 아바타 옆으로"), #selector(attachNowPlaying), to: menu)
         }
         menu.addItem(sizeMenuItem())
