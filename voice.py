@@ -86,13 +86,17 @@ SPEECH_WAIT_SECONDS = 300
 TURN_POLL_SECONDS = 0.1
 CONVERSATION_LOCK_PID = os.path.join(HERE, "talk.lock", "pid")
 TALK_SCRIPT = os.path.join(HERE, "talk.sh")
-CACHE_DIR = os.path.join(HERE, "voice_cache")
+# The assistant picked in the avatar's menu (persona.py) brings its own voice and voice cache.
+import persona as persona_config  # noqa: E402
+
+PERSONA_ID = persona_config.current_id()
+CACHE_DIR = persona_config.value(PERSONA_ID, "voice_cache")
 CACHE_NAME_CHARS = 16
 
 KEYCHAIN_SERVICE = "voice-assistant-elevenlabs"
 # Her voice: ELEVENLABS_VOICE_ID in assistant.conf, for example an instant voice clone made from
 # the voice in your avatar videos (see docs/AVATAR.md). Empty means the Yuna fallback voice.
-VOICE_ID = assistant_config.get("ELEVENLABS_VOICE_ID")
+VOICE_ID = persona_config.value(PERSONA_ID, "ELEVENLABS_VOICE_ID")
 MODEL_ID = "eleven_v4"  # chosen by the user over eleven_v4_turbo
 # Each reply is spoken in its own language: English when it has clearly more English letters than
 # Korean (one Korean syllable carries about HANGUL_WEIGHT letters' worth of sound), Korean
@@ -168,6 +172,9 @@ def fallback_voice_for(text):
 def open_elevenlabs(text, url):
     """Return an open HTTP response with MP3 audio, or None on any failure (logged)."""
     if os.environ.get("ASSISTANT_VOICE_ENGINE") == "yuna":
+        return None
+    if not VOICE_ID:
+        log("elevenlabs skipped: no ELEVENLABS_VOICE_ID for this assistant")
         return None
     key = api_key()
     if not key:

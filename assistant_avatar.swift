@@ -131,23 +131,22 @@ enum AvatarState: String {
 struct AvatarFiles {
     let base = Bundle.main.bundleURL.deletingLastPathComponent()
 
-    func clip(_ name: String) -> URL { base.appendingPathComponent("avatar/\(name).mp4") }
-    var still: URL { base.appendingPathComponent("avatar.png") }
+    // The clips and photo come from the assistant in use (avatar_persona.swift).
+    func clip(_ name: String) -> URL { activePersona.folder.appendingPathComponent("avatar/\(name).mp4") }
+    var still: URL { activePersona.folder.appendingPathComponent("avatar.png") }
     var state: URL { base.appendingPathComponent("talk.state") }
     var talkScript: URL { base.appendingPathComponent("talk.sh") }
     var speakingMarker: URL { base.appendingPathComponent("speaking.pid") }
     var speakingStyle: URL { base.appendingPathComponent("speaking.style") }
-    var name: URL { base.appendingPathComponent("assistant-name.txt") }
 }
 
 let files = AvatarFiles()
 
-// The names on the hover label: assistant-name.txt, written by install.sh from assistant.conf,
-// holds the Korean name on its first line and the English one on its second.
-let assistantNames: [String] = ((try? String(contentsOf: files.name, encoding: .utf8)) ?? "")
-    .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-let assistantName = assistantNames.first ?? "비서"
-let assistantEnglishName = assistantNames.dropFirst().first ?? (assistantNames.first ?? "Assistant")
+// The assistant in use (picked in the menu when there is more than one) and the names on the hover
+// label, from its assistant-name.txt (written by install.sh: Korean first, then English).
+var activePersona = chosenPersona(base: files.base)
+var assistantName: String { activePersona.nameKorean }
+var assistantEnglishName: String { activePersona.nameEnglish }
 
 // voice.py names its player in speaking.pid while the assistant's voice plays.
 // voice.py lists each speech that is being made or waits to play in speech-queue/ (files named
@@ -399,9 +398,13 @@ final class AvatarView: NSView {
         photoLayer.frame = photoRect
         photoLayer.cornerRadius = avatarSide / 2
         photoLayer.masksToBounds = true
-        photoLayer.contents = NSImage(contentsOf: files.still)
         photoLayer.contentsGravity = .resizeAspectFill
         contentLayer.addSublayer(photoLayer)
+        loadPersonaMedia()
+    }
+
+    // The assistant's photo and clips; its name on a circle when it has neither yet.
+    private func loadPersonaMedia() {
         for name in clipNames {
             guard let clip = ClipPlayer(url: files.clip(name)) else { continue }
             clip.layer.frame = photoLayer.bounds
@@ -409,6 +412,19 @@ final class AvatarView: NSView {
             photoLayer.addSublayer(clip.layer)
             clips[name] = clip
         }
+        photoLayer.contents = NSImage(contentsOf: files.still)
+            ?? (clips.isEmpty ? placeholderPhoto(name: activePersona.nameKorean, side: avatarSide * 2) : nil)
+    }
+
+    /// After another assistant is picked: its photo, clips and name label, in the current state.
+    func reloadPersona() {
+        clips.values.forEach { $0.layer.removeFromSuperlayer() }
+        clips = [:]
+        shownClip = nil
+        clipsStartedInState.removeAll()
+        loadPersonaMedia()
+        show(shownState ?? .idle)
+        refreshLabel()
     }
 
     // The photo's rectangle in the view at the current size.

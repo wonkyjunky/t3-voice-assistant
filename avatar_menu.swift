@@ -123,6 +123,8 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         let talk = conversationRunning() ? ui("End conversation", "대화 끝내기") : ui("Start conversation", "대화 시작")
         add(talk, #selector(toggleTalk), to: menu)
+        let personas = personaList(base: files.base)
+        if personas.count > 1 { menu.addItem(personaMenuItem(personas)) }
         menu.addItem(hotkeyMenuItem())
         menu.addItem(languageMenuItem())
         menu.addItem(menuLanguageMenuItem())
@@ -156,6 +158,19 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         let state = hotkey.index == hotkeyOff || hotkey.registered ? hotkey.title : "\(hotkey.title), \(ui("not registered", "등록 안 됨"))"
         let item = NSMenuItem(title: "\(ui("Shortcut", "단축키")): \(state)", action: nil, keyEquivalent: "")
         item.submenu = keys
+        return item
+    }
+
+    // "Assistant: 하나" with every assistant to switch to (docs/PERSONAS.md). Each talks in its own thread.
+    private func personaMenuItem(_ personas: [Persona]) -> NSMenuItem {
+        let choices = NSMenu()
+        for (index, persona) in personas.enumerated() {
+            add(ui(persona.nameEnglish, persona.nameKorean), #selector(choosePersona(_:)),
+                checked: persona.id == activePersona.id, to: choices).tag = index
+        }
+        let item = NSMenuItem(title: "\(ui("Assistant", "비서")): \(ui(assistantEnglishName, assistantName))",
+                              action: nil, keyEquivalent: "")
+        item.submenu = choices
         return item
     }
 
@@ -234,6 +249,14 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         shownSymbol = ""
         show(state)
         avatarView.refreshLabel()
+    }
+
+    @objc private func choosePersona(_ sender: NSMenuItem) {
+        let all = personaList(base: files.base)
+        guard all.indices.contains(sender.tag), all[sender.tag] != activePersona else { return }
+        savePersonaChoice(all[sender.tag].id, base: files.base)
+        activePersona = all[sender.tag]
+        avatarView.reloadPersona()
     }
 
     @objc private func chooseLanguage(_ sender: NSMenuItem) {

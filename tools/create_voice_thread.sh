@@ -1,9 +1,11 @@
 #!/bin/bash
-# tools/create_voice_thread.sh PROJECT
+# tools/create_voice_thread.sh PROJECT [PERSONA]
 #
 # Starts the assistant's voice thread in T3 Code (on ASSISTANT_INSTANCE and ASSISTANT_MODEL from
 # assistant.conf) inside the T3 project PROJECT (a project id or a folder of a project you opened
 # in T3), and saves its id in voice-thread-id. An existing id is kept in voice-thread-id.previous.
+# With PERSONA (a folder name in personas/), the thread is that assistant's: its persona.conf
+# picks the instance and the title, and the id goes in personas/PERSONA/voice-thread-id.
 # T3 Code must be running.
 
 set -euo pipefail
@@ -12,10 +14,17 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/assistant.conf"
 ID_FILE="$HERE/voice-thread-id"
+if [ $# -eq 2 ]; then
+  PERSONA_DIR="$HERE/personas/$2"
+  [ -f "$PERSONA_DIR/persona.conf" ] || { echo "create_voice_thread: no $PERSONA_DIR/persona.conf" >&2; exit 2; }
+  # shellcheck source=/dev/null
+  source "$PERSONA_DIR/persona.conf"
+  ID_FILE="$PERSONA_DIR/voice-thread-id"
+fi
 UUID='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
-if [ $# -ne 1 ]; then
-  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 

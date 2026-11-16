@@ -93,13 +93,27 @@ let pollSeconds: TimeInterval = 0.05
 let baseVocabulary: [String] = []
 let maxVocabularyWords = 100
 
+/// The names of the assistant in use (persona.py: "persona" names it; another assistant's
+/// assistant-name.txt is in personas/<id>/), so an assistant picked in the avatar's menu is heard.
+func personaWords(folder: URL) -> [String] {
+    let chosen = ((try? String(contentsOf: folder.appendingPathComponent("persona"), encoding: .utf8)) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !chosen.isEmpty, chosen != "main", !chosen.contains("/") else { return [] }
+    let names = folder.appendingPathComponent("personas/\(chosen)/assistant-name.txt")
+    return ((try? String(contentsOf: names, encoding: .utf8)) ?? "")
+        .split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+}
+
 func loadVocabulary() -> [String] {
-    let url = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("vocabulary.txt")
+    let folder = Bundle.main.bundleURL.deletingLastPathComponent()
+    let url = folder.appendingPathComponent("vocabulary.txt")
     let lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline)
     let extra = lines
         .map { $0.trimmingCharacters(in: .whitespaces) }
         .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-    return Array((baseVocabulary + extra).prefix(maxVocabularyWords))
+    var seen = Set<String>()
+    let words = (personaWords(folder: folder) + baseVocabulary + extra).filter { seen.insert($0).inserted }
+    return Array(words.prefix(maxVocabularyWords))
 }
 
 enum Cue {

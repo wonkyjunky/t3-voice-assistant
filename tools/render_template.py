@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""render_template.py TEMPLATE OUTPUT
+"""render_template.py TEMPLATE OUTPUT [PERSONA_DIR]
 
 Fills {{KEY}} placeholders in TEMPLATE with this install's values and writes OUTPUT. The values
 are everything in assistant.conf plus ASSISTANT_DIR (the repository folder), PYTHON (the Python
@@ -21,10 +21,10 @@ PYTHON = "/opt/homebrew/bin/python3"
 PLACEHOLDER = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
 
 
-def read_persona():
-    for name in ("persona.md", "persona.example.md"):
+def read_persona(folder=REPO):
+    for path in (folder / "persona.md", REPO / "persona.example.md"):
         try:
-            return (REPO / name).read_text(encoding="utf-8").strip()
+            return path.read_text(encoding="utf-8").strip()
         except OSError:
             continue
     return ""
@@ -49,9 +49,14 @@ def song_rule(config):
     return APPLE_MUSIC_SONG_RULE if config.get("APPLE_MUSIC", "").strip().lower() == "yes" else YOUTUBE_SONG_RULE
 
 
-def install_values():
+def install_values(persona_dir=None):
+    """assistant.conf (with another assistant's persona.conf on top, for personas/<id>/)."""
     config = assistant_config.load()
-    return {**config, "ASSISTANT_DIR": str(REPO), "PYTHON": PYTHON, "PERSONA": read_persona(),
+    folder = REPO
+    if persona_dir is not None:
+        folder = Path(persona_dir)
+        config = {**config, **assistant_config.read(folder / "persona.conf")}
+    return {**config, "ASSISTANT_DIR": str(REPO), "PYTHON": PYTHON, "PERSONA": read_persona(folder),
             "SONG_RULE": song_rule(config)}
 
 
@@ -65,12 +70,13 @@ def render(text, values):
 
 
 def main(argv):
-    if len(argv) != 3:
+    if len(argv) not in (3, 4):
         print(__doc__.strip().splitlines()[0], file=sys.stderr)
         return 2
     template, output = Path(argv[1]), Path(argv[2])
+    persona_dir = argv[3] if len(argv) == 4 else None
     try:
-        text = render(template.read_text(encoding="utf-8"), install_values())
+        text = render(template.read_text(encoding="utf-8"), install_values(persona_dir))
     except KeyError as missing:
         print(f"render_template: {template.name} needs values in assistant.conf for: {missing}", file=sys.stderr)
         return 1

@@ -79,6 +79,21 @@ write_settings_files() {
       "$ASSISTANT_NAME_EN" "$USER_CALL_KO" "$USER_SHORT_CALL_KO" "$USER_NAME_EN" | awk '!seen[$0]++'; } > vocabulary.txt
   fi
   echo "  persona.md, assistant-system.md, assistant-settings.json, assistant-memory.md, vocabulary.txt, claude-md-milestone.md"
+  write_persona_files
+}
+
+# More assistants to pick in the avatar's menu (docs/PERSONAS.md): personas/<id>/persona.conf.
+write_persona_files() {
+  local conf dir
+  for conf in personas/*/persona.conf; do
+    [ -f "$conf" ] || continue
+    dir="$(dirname "$conf")"
+    [ -f "$dir/persona.md" ] || cp persona.example.md "$dir/persona.md"
+    # shellcheck source=/dev/null
+    ( source "$conf" && printf '%s\n%s\n' "$ASSISTANT_NAME_KO" "$ASSISTANT_NAME_EN" > "$dir/assistant-name.txt" )
+    "$PYTHON" -I tools/render_template.py templates/assistant-system.md.tmpl "$dir/assistant-system.md" "$dir"
+    echo "  $dir: assistant-system.md, assistant-name.txt"
+  done
 }
 
 check_media() {
@@ -154,6 +169,21 @@ print_next_steps() {
   3. 단축어("${ASSISTANT_NAME_KO}" 부르기)에 셸 스크립트 실행:  /bin/bash $HERE/talk.sh
   4. 다른 스레드의 마일스톤 보고를 원하면 claude-md-milestone.md 내용을 ~/.claude/CLAUDE.md에 붙이세요.
 NEXT
+  print_persona_steps
+}
+
+print_persona_steps() {
+  local conf dir id instance
+  for conf in personas/*/persona.conf; do
+    [ -f "$conf" ] || continue
+    dir="$(dirname "$conf")"; id="$(basename "$dir")"
+    instance="$( (source "$conf" && printf '%s' "$ASSISTANT_INSTANCE") )"
+    cat <<PERSONA
+  추가 비서 $id: T3 Code에 인스턴스 $instance 를 추가하고(실행 인자는 아래), 스레드를 만드세요.
+       --settings $HERE/assistant-settings.json --append-system-prompt-file $HERE/$dir/assistant-system.md
+       tools/create_voice_thread.sh <T3 프로젝트 폴더> $id
+PERSONA
+  done
 }
 
 check_requirements

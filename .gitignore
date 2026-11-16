@@ -10,6 +10,10 @@ vocabulary.txt
 voice-thread-id
 voice-thread-id.previous
 
+# More assistants and the one in use (see docs/PERSONAS.md)
+/personas/
+/persona
+
 # Your own media (see docs/AVATAR.md)
 avatar/*.mp4
 avatar.png

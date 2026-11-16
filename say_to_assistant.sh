@@ -29,6 +29,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 VOICE_DIR="${VOICE_DIR:-$HERE}"
 T3="${T3_BIN:-$HOME/.local/bin/t3}"
 ID_FILE="$VOICE_DIR/voice-thread-id"
+# Each assistant (persona.py, picked in the avatar's menu) talks in its own thread. A VOICE_DIR
+# given from outside (the tests) keeps its own voice-thread-id.
+if [ "$VOICE_DIR" = "$HERE" ]; then
+  PERSONA_ID_FILE="$(/opt/homebrew/bin/python3 -I "$HERE/persona.py" get thread_file 2>/dev/null || true)"
+  [ -n "$PERSONA_ID_FILE" ] && ID_FILE="$PERSONA_ID_FILE"
+fi
 LOG="$VOICE_DIR/voice.log"
 SPEAK_LOG="${SPEAK_LOG:-$HERE/speak.log}"
 

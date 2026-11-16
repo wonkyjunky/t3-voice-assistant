@@ -218,5 +218,14 @@ do {
            "it never rises past the menu bar")
 }
 
+// Assistants to pick in the menu: their names from assistant-name.txt.
+do {
+    let names = parsePersonaNames("은서\nEunseo\n")
+    expect(names?.korean == "은서" && names?.english == "Eunseo", "Korean then English name")
+    expect(parsePersonaNames("하나\n")?.english == "하나", "no English name uses the Korean one")
+    expect(parsePersonaNames("\n \n") == nil, "an empty file gives no names")
+    expect(placeholderPhoto(name: "은서", side: 100).size == NSSize(width: 100, height: 100), "a stand-in photo is drawn")
+}
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

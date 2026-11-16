@@ -53,6 +53,7 @@ Follow this README from top to bottom and you will end up with the same setup.
   - A now-playing card next to the avatar shows the song playing on YouTube or YouTube Music in Chrome or in the Music app, with play/pause, next (and previous for Music) buttons and a slider for the music's own volume (the Mac's volume and the assistant's voice stay as they are). When both play (music in the Music app while you watch a video in Chrome), each gets its own row with its own buttons and volume, and a row's buttons leave the other row alone. New rows grow away from the nearer screen edge (upward when the card sits low on the screen), and a title too long for the row slides past. It stays for 30 seconds after you pause, so you can play again from it. Drag it by its background to put it anywhere; double-click it, or use "Move to top right" in the menu, to bring it back beside the avatar.
   - Hover to see a status label; scroll to resize it.
   - A menu bar icon shows the state. Its menu, also opened by a right-click on the avatar, starts or ends a conversation, changes the keyboard shortcut, the main spoken language and the menu language (English by default, or 한국어), shows or hides the avatar, captions, sound bars and the now-playing card, sets the avatar's size, moves it (and the now-playing card) back to the top right corner and shows the ElevenLabs characters left.
+- **More than one assistant**: Keep several assistants, each with its own name, character, voice, avatar and thread, and switch between them in the menu ("Assistant"). They share the memory notes. See [docs/PERSONAS.md](docs/PERSONAS.md).
 - **Memory**: New sessions start with the notes in `assistant-memory.md`, and the assistant writes down what matters.
 - **Mac control**:
   - Changes the volume.
@@ -323,6 +324,7 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 | `assistant_avatar.swift` | The floating video avatar |
 | `avatar_captions.swift`, `avatar_meter.swift` | The avatar's caption bubbles and sound bars |
 | `avatar_menu.swift`, `avatar_hotkey.swift` | The menu bar icon and menu, and the built-in keyboard shortcut |
+| `persona.py`, `avatar_persona.swift` | Which assistant is in use, and switching between them (docs/PERSONAS.md) |
 | `avatar_nowplaying.swift`, `avatar_nowplaying_card.swift`, `avatar_marquee.swift` | What plays in Chrome or the Music app, and the now-playing card with its buttons and volume slider |
 | `listen_transcript.swift` | Keeps what was said across pauses (the recognizer starts over after each one) and picks Korean or English |
 | `listen_channel.swift` | One recognizer in one language, and the recording the second language listens to |

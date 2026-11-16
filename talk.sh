@@ -20,6 +20,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # This install's settings (names, the t3 command, the greeting). See assistant.conf.example.
 # shellcheck source=/dev/null
 [ -f "$HERE/assistant.conf" ] && source "$HERE/assistant.conf"
+# The assistant picked in the avatar's menu (persona.py) may change some of them, and keeps its
+# own voice cache.
+PERSONA_DIR="$(/opt/homebrew/bin/python3 -I "$HERE/persona.py" get dir 2>/dev/null || true)"
+PERSONA_DIR="${PERSONA_DIR:-$HERE}"
+# shellcheck source=/dev/null
+[ -f "$PERSONA_DIR/persona.conf" ] && source "$PERSONA_DIR/persona.conf"
 VOICE_DIR="${VOICE_DIR:-$HERE}"
 LISTEN_APP="$HERE/AssistantListen.app"
 SEND="${SEND_SCRIPT:-$HERE/say_to_assistant.sh}"
@@ -33,8 +39,8 @@ GREETING="${ASSISTANT_GREETING:-${USER_CALL_KO:+$USER_CALL_KO, }${GREETING:-ë¶ˆë
 VOICE_SCRIPT="$HERE/voice.py"
 PYTHON=/opt/homebrew/bin/python3
 # The greeting is made once in the assistant's voice and kept, so it costs nothing after the first time.
-GREETING_AUDIO="$HERE/voice_cache/greeting.mp3"
-GREETING_TEXT_FILE="$HERE/voice_cache/greeting.txt"
+GREETING_AUDIO="$PERSONA_DIR/voice_cache/greeting.mp3"
+GREETING_TEXT_FILE="$PERSONA_DIR/voice_cache/greeting.txt"
 # Voice tag for the greeting audio (ElevenLabs acts it out; the Yuna fallback never sees it).
 GREETING_TAG="${ASSISTANT_GREETING_TAG-[cheerfully]}"
 GREETING_SPOKEN="${GREETING_TAG:+$GREETING_TAG }$GREETING"
