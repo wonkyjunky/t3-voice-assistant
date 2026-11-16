@@ -2,17 +2,22 @@
 
 AppleScript can search only the Music library, so the catalog is searched with Apple's public
 iTunes Search API (no key). The song's page is then opened in Music and played. Music is started
-hidden when it is not running, so no window appears; the app in front stays in front.
+hidden when it is not running, and put out of sight again once the song plays (opening a page
+brings a running Music to the front), so the app in front stays in front. When the user has Music
+itself in front, it is left as it is.
 
 Opening a song page only shows it, and "play" then starts its album from the first track. So
 playing takes these steps: stop what plays, open the page, turn Music's volume down, play, skip
 ahead until Music reports that very song, start it from the beginning, and give the volume back.
 """
 import json
+import re
 import urllib.parse
 
 OSASCRIPT = "/usr/bin/osascript"
 OPEN = "/usr/bin/open"
+LSAPPINFO = "/usr/bin/lsappinfo"
+BUNDLE_ID_PATTERN = re.compile(r'bundleID="([^"]+)"')
 MUSIC_BUNDLE_ID = "com.apple.Music"
 SEARCH_URL = "https://itunes.apple.com/search?"
 # The Apple Music store the songs come from.
@@ -54,6 +59,41 @@ tell application id "{MUSIC_BUNDLE_ID}"
     end try
 end tell
 """
+
+
+# Hides Music and, when Music had taken the front, brings back the app that was there (argument 1,
+# a bundle id, may be empty). It uses AppKit directly, so it needs no Automation permission.
+OUT_OF_SIGHT_JS = """
+ObjC.import('AppKit');
+function run(argv) {
+    const app = id => $.NSRunningApplication.runningApplicationsWithBundleIdentifier(id).firstObject;
+    const music = app('com.apple.Music');
+    if (music.isNil()) return 'absent';
+    const tookFront = music.isActive;
+    music.hide;
+    if (tookFront && argv[0]) {
+        const back = app(argv[0]);
+        if (!back.isNil()) back.activateWithOptions(0);
+    }
+    return 'hidden';
+}
+"""
+
+
+def front_app(runner):
+    """The bundle id of the app in front, or None when it cannot be told."""
+    front = runner([LSAPPINFO, "front"])
+    if front.returncode != 0 or not front.stdout:
+        return None
+    match = BUNDLE_ID_PATTERN.search(runner([LSAPPINFO, "info", "-only", "bundleid", front.stdout]).stdout)
+    return match.group(1) if match else None
+
+
+def keep_out_of_sight(runner, before):
+    """Puts Music out of sight while a song starts, unless the user had Music itself in front."""
+    if before == MUSIC_BUNDLE_ID:
+        return
+    runner([OSASCRIPT, "-l", "JavaScript", "-e", OUT_OF_SIGHT_JS, before or ""])
 
 
 def search_url(words):
@@ -143,12 +183,13 @@ def find_in_album(runner, song, sleep, clock):
     return wait_for(sleep, clock, PLAY_WAIT_SECONDS, RETRY_SECONDS, on_song)
 
 
-def play_song(runner, song, sleep, clock):
+def play_song(runner, song, sleep, clock, before=None):
     """Opens the song's page in Music and plays that song from its start, silently finding it."""
     volume = osa(runner, GET_VOLUME_SCRIPT).stdout
     osa(runner, STOP_SCRIPT)
     if runner([OPEN, "-g", song_link(song)]).returncode != 0:
         return False
+    keep_out_of_sight(runner, before)
     sleep(PAGE_LOAD_SECONDS)
     if volume.isdigit():
         osa(runner, SET_VOLUME_SCRIPT, "0")
@@ -164,8 +205,9 @@ def play_song(runner, song, sleep, clock):
     return found
 
 
-def play_from_catalog(words, runner, fetch, sleep, clock):
-    """Finds words in the Apple Music catalog and plays the first song. Prints one line."""
+def play_from_catalog(words, runner, fetch, sleep, clock, before=None):
+    """Finds words in the Apple Music catalog and plays the first song. Prints one line. before is
+    the app that was in front, to keep there."""
     songs = parse_songs(fetch(search_url(words)))
     if not songs:
         print("no song matched in Apple Music")
@@ -174,7 +216,9 @@ def play_from_catalog(words, runner, fetch, sleep, clock):
         print("the Music app did not start")
         return EXIT_FAILED
     song = songs[0]
-    if not play_song(runner, song, sleep, clock):
+    played = play_song(runner, song, sleep, clock, before)
+    keep_out_of_sight(runner, before)
+    if not played:
         print(f"could not start {song['name']} - {song['artist']} in Music")
         return EXIT_FAILED
     print(f"playing from Apple Music: {song['name']} - {song['artist']}")

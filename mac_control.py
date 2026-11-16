@@ -389,14 +389,16 @@ def play_matching(runner, script, query, label):
 def play_song(words, ctx):
     """A song from the Music library, else from the Apple Music catalog. Music starts hidden when it
     is not running, so asking the library opens no window."""
+    before = apple_music.front_app(ctx.runner)
     if not apple_music.start_hidden(ctx.runner, ctx.sleep, ctx.clock):
         print("the Music app did not start")
         return EXIT_FAILED
     found = osa(ctx.runner, PLAY_SONG_SCRIPT, words)
     if found.returncode == 0 and found.stdout:
+        apple_music.keep_out_of_sight(ctx.runner, before)
         print(f"playing {found.stdout}")
         return EXIT_OK
-    return apple_music.play_from_catalog(words, ctx.runner, ctx.fetch, ctx.sleep, ctx.clock)
+    return apple_music.play_from_catalog(words, ctx.runner, ctx.fetch, ctx.sleep, ctx.clock, before)
 
 
 def duck_music(runner, state_file):

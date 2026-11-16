@@ -93,7 +93,7 @@ class MusicApp:
     opened with open -g becomes playable after loads_after plays, and play starts its album (the
     tracks in album) from the first track."""
 
-    def __init__(self, running, loads_after, album=("Shika",)):
+    def __init__(self, running, loads_after, album=("Shika",), front="com.apple.Safari"):
         self.running = running
         self.loads_after = loads_after
         self.album = list(album)
@@ -101,10 +101,19 @@ class MusicApp:
         self.playing = None
         self.volume = "54"
         self.volumes = []
+        self.front = front
+        self.put_out_of_sight = []
         self.calls = []
 
     def __call__(self, args):
         self.calls.append(list(args))
+        if args[0] == mc.apple_music.LSAPPINFO:
+            if args[1] == "front":
+                return mc.Result(0, "ASN:0x0-0x1:")
+            return mc.Result(0, f'"App" ASN:0x0-0x1:\n    bundleID="{self.front}"')
+        if args[1:3] == ["-l", "JavaScript"]:
+            self.put_out_of_sight.append(args[-1])
+            return mc.Result(0, "hidden")
         if args[0] == mc.apple_music.OPEN:
             if "-j" in args:
                 self.running = True
@@ -140,9 +149,10 @@ class MusicApp:
 class MusicTests(unittest.TestCase):
     def test_song_query_is_passed_as_argument_not_in_script(self):
         query = 'IU "Blueming"'
-        runner = FakeRunner(*NOTHING_ELSE_PLAYS, (0, "true"), (0, "Blueming - IU"))
+        front = [(0, "ASN:0x0-0x1:"), (0, 'bundleID="com.apple.Safari"')]
+        runner = FakeRunner(*NOTHING_ELSE_PLAYS, *front, (0, "true"), (0, "Blueming - IU"))
         self.assertEqual(run_cli(["music", "song", query], runner), mc.EXIT_OK)
-        call = runner.calls[3]
+        call = runner.calls[5]
         self.assertEqual(call[-1], query)
         self.assertNotIn("Blueming", call[2])
 
@@ -190,6 +200,17 @@ class MusicTests(unittest.TestCase):
         code = run_cli(["music", "song", "shika"], ignore_first_open, fetch=lambda url: CATALOG_ANSWER)
         self.assertEqual(code, mc.EXIT_OK)
         self.assertEqual(len(opened), 2)
+
+    def test_music_is_put_out_of_sight_and_the_app_in_front_comes_back(self):
+        runner = MusicApp(running=True, loads_after=0, front="com.apple.Safari")
+        self.assertEqual(run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER), mc.EXIT_OK)
+        self.assertTrue(runner.put_out_of_sight, "Music is hidden once the song plays")
+        self.assertEqual(set(runner.put_out_of_sight), {"com.apple.Safari"})
+
+    def test_music_in_front_is_left_alone(self):
+        runner = MusicApp(running=True, loads_after=0, front="com.apple.Music")
+        run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER)
+        self.assertEqual(runner.put_out_of_sight, [], "the user is using Music, so it stays")
 
     def test_closed_music_app_is_started_hidden(self):
         runner = MusicApp(running=False, loads_after=0)
