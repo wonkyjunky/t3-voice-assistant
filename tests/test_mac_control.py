@@ -310,7 +310,9 @@ class YoutubeTests(unittest.TestCase):
     def test_youtube_volume_sets_chrome_tabs(self):
         runner = FakeRunner((0, "set"))
         self.assertEqual(run_cli(["youtube", "volume", "40"], runner), mc.EXIT_OK)
-        self.assertIn("v.volume=0.40", runner.calls[0][-2])
+        script = runner.calls[0][-2]
+        self.assertIn("__assistantLevel=0.40", script)
+        self.assertIn("volumechange", script, "a guard keeps the level when YouTube puts back its own")
 
     def test_volume_level_must_be_0_to_100(self):
         self.assertEqual(run_cli(["youtube", "volume", "150"], FakeRunner()), mc.EXIT_USAGE)

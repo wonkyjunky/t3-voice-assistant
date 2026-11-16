@@ -117,10 +117,25 @@ DUCK_JS = (
     f"(()=>{{{VIDEO_JS}if(!v||v.paused)return 'idle';if(window.__assistantVolume===undefined)"
     f"{{window.__assistantVolume=v.volume;v.volume=Math.max(0.01,v.volume*{DUCK_RATIO});}}return 'ducked';}})()"
 )
-# Sets every YouTube tab's volume; a lowering for a conversation is forgotten (the user's choice wins).
+# Sets every YouTube tab's volume and keeps it: YouTube puts back its own level when a video starts
+# playing, so a guard (installed once per page) sets ours again whenever the element's volume moves
+# while YouTube's own volume control has not (muting is left alone: it moves that control to 0). Moving YouTube's control by hand, or a lowering for a
+# conversation (__assistantVolume), takes over from the guard. Chrome runs this script beside the page's own
+# scripts, so YouTube's player API is out of reach; its control is read from the page instead.
 def volume_js(level):
-    return (f"(()=>{{{VIDEO_JS}if(!v)return 'none';delete window.__assistantVolume;"
-            f"v.volume={int(level) / MAX_VOLUME:.2f};return 'set';}})()")
+    return (
+        "(()=>{const v=document.querySelector('video');if(!v)return 'none';"
+        "const ui=()=>{const c=document.querySelector('.ytp-volume-panel,#volume-slider');"
+        "return c?(c.getAttribute('aria-valuenow')||c.getAttribute('value')):null;};"
+        f"delete window.__assistantVolume;window.__assistantLevel={int(level) / MAX_VOLUME:.2f};"
+        "window.__assistantUi=ui();v.volume=window.__assistantLevel;"
+        "if(!window.__assistantGuard){window.__assistantGuard=true;"
+        "document.addEventListener('volumechange',e=>{const m=e.target;"
+        "if(!(m instanceof HTMLMediaElement)||m.muted||window.__assistantLevel===undefined||window.__assistantVolume!==undefined)return;"
+        "if(ui()!==window.__assistantUi){delete window.__assistantLevel;return;}"
+        "if(Math.abs(m.volume-window.__assistantLevel)>0.01)m.volume=window.__assistantLevel;},true);}"
+        "return 'set';})()"
+    )
 
 
 UNDUCK_JS = (
