@@ -238,8 +238,10 @@ def speak(text, follow_up=False):
 # Messages from other threads ([마일스톤]) and from the voice system itself ([알림], such as the
 # ElevenLabs credit alert from credit_alert.py) wait for the morning during quiet hours.
 REPORT_PREFIX = ("[마일스톤]", "[알림]")
-# Messages the voice system writes itself; they are spoken like the ones the user says aloud.
-AUTOMATIC_PREFIX = REPORT_PREFIX + ("[아침 브리핑]",)
+# Messages that start with a tag such as [마일스톤], [알림], [아침 브리핑] or [Project 답변] come from
+# the voice system or another thread, not from the user typing; they are spoken like what the
+# user says aloud.
+AUTOMATIC_TAG = re.compile(r"\s*\[[^\[\]\n]{1,40}\]")
 
 
 def last_user_text(transcript_path):
@@ -296,7 +298,7 @@ def typed_in_chat(transcript_path, now=None):
         text = last_user_text(transcript_path)
     except OSError:
         return False
-    if text.lstrip().startswith(AUTOMATIC_PREFIX):
+    if AUTOMATIC_TAG.match(text):
         return False
     return not sent_by_voice(text, now)
 

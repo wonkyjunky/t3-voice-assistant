@@ -65,6 +65,15 @@ class TypedInChatTests(unittest.TestCase):
             path = transcript(self.folder, notice)
             self.assertFalse(speak.typed_in_chat(path, now=NOW), notice)
 
+    def test_answers_from_other_threads_are_spoken(self):
+        for answer in ("[Project 답변] 네, 먼저 올릴게요.", "[확인 결과] 통과했어요.", "  [Notes 요약] 세 가지"):
+            path = transcript(self.folder, answer)
+            self.assertFalse(speak.typed_in_chat(path, now=NOW), answer)
+
+    def test_a_bracket_later_in_a_typed_message_does_not_count(self):
+        path = transcript(self.folder, "이거 [메모] 해 둬")
+        self.assertTrue(speak.typed_in_chat(path, now=NOW))
+
     def test_no_marker_file_means_typed(self):
         path = transcript(self.folder, "안녕")
         self.assertTrue(speak.typed_in_chat(path, now=NOW))
