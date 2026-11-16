@@ -8,12 +8,19 @@ run argument, never inside the script source, so it cannot inject AppleScript.
 
   volume get | up | down | mute | unmute | set <0-100>
   music play | pause | toggle | next | previous | now
-  music song <words>        play the first match in the Music library
+  music song <words>        play the first match in the Music library, else in Apple Music
   music playlist <name>     play one of the user's playlists
   music duck | unduck       lower Music while a voice conversation runs, then restore it
+  music volume <0-100>      the Music app's own volume (the Mac's volume stays)
   youtube play <words>      open the first YouTube result in the default browser, which plays it
   youtube search <words>    open YouTube search results in the default browser
+  youtube volume <0-100>    the volume of YouTube playing in Chrome (the Mac's volume stays)
+  playing pause | resume | next | now   whatever plays: YouTube in Chrome or the Music app
   app open <name> | app quit <name>
+
+Music plays in one place at a time: music play | song | playlist and youtube play | resume pause
+music playing in the other place first (music_sources.py). music song plays from the Apple Music
+catalog (apple_music.py, needs an Apple Music subscription) when the song is not in the library.
 
 youtube play reads YouTube's search page to find the first video. When YouTube cannot be reached
 or the page has no video, it opens the search results instead and exits with 3.
@@ -26,11 +33,17 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+# Run as python3 -I, which leaves this folder off the import path; its own modules live here.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import apple_music  # noqa: E402
+import music_sources  # noqa: E402
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -104,6 +117,12 @@ DUCK_JS = (
     f"(()=>{{{VIDEO_JS}if(!v||v.paused)return 'idle';if(window.__assistantVolume===undefined)"
     f"{{window.__assistantVolume=v.volume;v.volume=Math.max(0.01,v.volume*{DUCK_RATIO});}}return 'ducked';}})()"
 )
+# Sets every YouTube tab's volume; a lowering for a conversation is forgotten (the user's choice wins).
+def volume_js(level):
+    return (f"(()=>{{{VIDEO_JS}if(!v)return 'none';delete window.__assistantVolume;"
+            f"v.volume={int(level) / MAX_VOLUME:.2f};return 'set';}})()")
+
+
 UNDUCK_JS = (
     f"(()=>{{{VIDEO_JS}if(!v||window.__assistantVolume===undefined)return 'idle';"
     "v.volume=window.__assistantVolume;delete window.__assistantVolume;return 'restored';})()"
@@ -134,6 +153,25 @@ if application "Music" is running then
     end tell
 end if
 return ""
+"""
+# The Music app's state without starting it: playing, paused, stopped, or nothing when closed.
+MUSIC_STATE_SCRIPT = """
+if application "Music" is running then
+    tell application "Music" to return player state as text
+end if
+return ""
+"""
+# pause | play | next for a Music app that runs; a closed one is left closed.
+MUSIC_IF_RUNNING_SCRIPT = """
+on run argv
+    if application "Music" is running then
+        tell application "Music"
+            if (item 1 of argv) is "pause" then pause
+            if (item 1 of argv) is "play" then play
+            if (item 1 of argv) is "next" then next track
+        end tell
+    end if
+end run
 """
 PLAYING_VOLUME_SCRIPT = """
 if application "Music" is running then
@@ -199,6 +237,8 @@ class Context:
     runner: Callable[[list], Result]
     state_dir: Path
     fetch: Callable[[str], Optional[str]]
+    sleep: Callable[[float], None] = time.sleep
+    clock: Callable[[], float] = time.monotonic
 
 
 class UsageError(Exception):
@@ -212,7 +252,7 @@ def fetch_page(url):
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             return response.read(MAX_PAGE_BYTES).decode("utf-8", "replace")
     except (OSError, ValueError) as error:
-        print(f"mac_control: could not reach YouTube: {error}", file=sys.stderr)
+        print(f"mac_control: could not reach {urllib.parse.urlsplit(url).netloc}: {error}", file=sys.stderr)
         return None
 
 
@@ -329,6 +369,19 @@ def play_matching(runner, script, query, label):
     return EXIT_OK
 
 
+def play_song(words, ctx):
+    """A song from the Music library, else from the Apple Music catalog. Music starts hidden when it
+    is not running, so asking the library opens no window."""
+    if not apple_music.start_hidden(ctx.runner, ctx.sleep, ctx.clock):
+        print("the Music app did not start")
+        return EXIT_FAILED
+    found = osa(ctx.runner, PLAY_SONG_SCRIPT, words)
+    if found.returncode == 0 and found.stdout:
+        print(f"playing {found.stdout}")
+        return EXIT_OK
+    return apple_music.play_from_catalog(words, ctx.runner, ctx.fetch, ctx.sleep, ctx.clock)
+
+
 def duck_music(runner, state_file):
     if state_file.exists():
         print("music already lowered")
@@ -355,9 +408,24 @@ def unduck_music(runner, state_file):
     return report(osa(runner, SET_MUSIC_VOLUME_SCRIPT, str(level)), f"music restored to {level}")
 
 
+def required_level(words):
+    level = parse_volume(" ".join(words).strip())
+    if level is None:
+        raise UsageError(f"give a volume from 0 to {MAX_VOLUME}")
+    return level
+
+
+def set_music_volume(runner, state_file, level):
+    """The user's own choice of Music volume; a lowering for a conversation is forgotten."""
+    state_file.unlink(missing_ok=True)
+    return report(osa(runner, SET_MUSIC_VOLUME_SCRIPT, str(level)), f"music volume {level}")
+
+
 def handle_music(options, ctx):
     action, runner = options.action, ctx.runner
     state_file = ctx.state_dir / DUCK_STATE_NAME
+    if action in ("play", "song", "playlist") or (action == "toggle" and music_state(ctx) != music_sources.PLAYING):
+        music_sources.pause_others(ctx, SOURCES, keep="music")
     if action in MUSIC_VERBS:
         script = f'tell application "Music" to {MUSIC_VERBS[action]}'
         return report(osa(runner, script), f"music {action}")
@@ -365,10 +433,12 @@ def handle_music(options, ctx):
         playing = osa(runner, NOW_PLAYING_SCRIPT)
         return report(playing, f"now playing {playing.stdout}" if playing.stdout else "nothing playing")
     if action == "song":
-        return play_matching(runner, PLAY_SONG_SCRIPT, required_text(options.query, "song"), "song")
+        return play_song(required_text(options.query, "song"), ctx)
     if action == "playlist":
         name = required_text(options.query, "playlist name")
         return play_matching(runner, PLAY_PLAYLIST_SCRIPT, name, "playlist")
+    if action == "volume":
+        return set_music_volume(runner, state_file, required_level(options.query))
     if action == "duck":
         return duck_music(runner, state_file)
     return unduck_music(runner, state_file)
@@ -382,11 +452,13 @@ def chrome_error(stderr):
     return "the Mac refused or failed"
 
 
-def in_youtube_tabs(ctx, js, scope="all"):
-    """Each YouTube tab's answer to js, [] when none is open, or None after printing a failure."""
+def in_youtube_tabs(ctx, js, scope="all", quiet=False):
+    """Each YouTube tab's answer to js, [] when none is open, or None after a failure (printed
+    unless quiet)."""
     result = osa(ctx.runner, CHROME_TABS_SCRIPT, js, scope)
     if result.returncode != 0:
-        print(chrome_error(result.stderr))
+        if not quiet:
+            print(chrome_error(result.stderr))
         return None
     if result.stdout in ("no-browser", "no-tab", ""):
         return []
@@ -454,7 +526,15 @@ def unduck_youtube(ctx):
     return EXIT_OK
 
 
+def youtube_volume(level, ctx):
+    (ctx.state_dir / YOUTUBE_DUCK_NAME).unlink(missing_ok=True)
+    answers = in_youtube_tabs(ctx, volume_js(level))
+    return tab_outcome(answers, "set", f"YouTube volume {level}", "no YouTube video is open in Chrome")
+
+
 def control_youtube(action, ctx):
+    if action == "resume":
+        music_sources.pause_others(ctx, SOURCES, keep="chrome")
     if action == "pause":
         answers = in_youtube_tabs(ctx, PAUSE_JS)
         return tab_outcome(answers, "paused", "paused YouTube", "YouTube was not playing")
@@ -474,6 +554,8 @@ YOUTUBE_CONTROLS = ("pause", "resume", "next", "now", "duck", "unduck")
 
 
 def handle_youtube(options, ctx):
+    if options.action == "volume":
+        return youtube_volume(required_level(options.query), ctx)
     if options.action in YOUTUBE_CONTROLS:
         return control_youtube(options.action, ctx)
     query = required_text(options.query, "search words")
@@ -491,7 +573,56 @@ def handle_youtube(options, ctx):
         print("found no video to play, opened YouTube search results instead")
         return EXIT_NOT_FOUND
     video_id, title = video
+    music_sources.pause_others(ctx, SOURCES, keep="chrome")
     return report(ctx.runner([OPEN, YOUTUBE_WATCH_URL + video_id]), f"playing on YouTube: {title or video_id}")
+
+
+# The two places music plays, for music_sources.py.
+def chrome_state(ctx):
+    answers = in_youtube_tabs(ctx, NOW_JS, quiet=True)
+    if not answers:
+        return None
+    return music_sources.PLAYING if any(a.startswith("playing:") for a in answers) else music_sources.PAUSED
+
+
+def chrome_resume(ctx):
+    answers = in_youtube_tabs(ctx, RESUME_PAUSED_JS, quiet=True)
+    if answers and "resumed" not in answers:
+        in_youtube_tabs(ctx, PLAY_JS, "first", quiet=True)
+
+
+def music_state(ctx):
+    state = osa(ctx.runner, MUSIC_STATE_SCRIPT).stdout
+    return state if state in (music_sources.PLAYING, music_sources.PAUSED) else None
+
+
+def music_if_running(word):
+    return lambda ctx: osa(ctx.runner, MUSIC_IF_RUNNING_SCRIPT, word)
+
+
+def music_now(ctx):
+    playing = osa(ctx.runner, NOW_PLAYING_SCRIPT)
+    return report(playing, f"now playing on Music: {playing.stdout}" if playing.stdout else "Music is paused")
+
+
+SOURCES = (
+    music_sources.Source(
+        "chrome", "YouTube in Chrome", chrome_state,
+        pause=lambda ctx: in_youtube_tabs(ctx, PAUSE_JS, quiet=True),
+        resume=chrome_resume,
+        skip=lambda ctx: in_youtube_tabs(ctx, NEXT_JS, quiet=True),
+        now=lambda ctx: youtube_now(ctx),
+    ),
+    music_sources.Source(
+        "music", "Music", music_state,
+        pause=music_if_running("pause"), resume=music_if_running("play"), skip=music_if_running("next"),
+        now=music_now,
+    ),
+)
+
+
+def handle_playing(options, ctx):
+    return music_sources.control(options.action, ctx, SOURCES)
 
 
 def checked_app_name(words):
@@ -529,27 +660,31 @@ def build_parser():
     volume.add_argument("action", choices=["get", "up", "down", "mute", "unmute", "set"])
     volume.add_argument("level", nargs="?")
     music = groups.add_parser("music")
-    music.add_argument("action", choices=[*MUSIC_VERBS, "now", "song", "playlist", "duck", "unduck"])
+    music.add_argument("action", choices=[*MUSIC_VERBS, "now", "song", "playlist", "duck", "unduck", "volume"])
     music.add_argument("query", nargs="*")
     youtube = groups.add_parser("youtube")
-    youtube.add_argument("action", choices=["play", "search", *YOUTUBE_CONTROLS])
+    youtube.add_argument("action", choices=["play", "search", "volume", *YOUTUBE_CONTROLS])
     youtube.add_argument("query", nargs="*")
+    playing = groups.add_parser("playing")
+    playing.add_argument("action", choices=["pause", "resume", "next", "now"])
     app = groups.add_parser("app")
     app.add_argument("action", choices=["open", "quit"])
     app.add_argument("name", nargs="*")
     return parser
 
 
-HANDLERS = {"volume": handle_volume, "music": handle_music, "youtube": handle_youtube, "app": handle_app}
+HANDLERS = {"volume": handle_volume, "music": handle_music, "youtube": handle_youtube, "playing": handle_playing,
+            "app": handle_app}
 
 
-def main(argv=None, runner=system_runner, state_dir=DEFAULT_STATE_DIR, fetch=fetch_page):
+def main(argv=None, runner=system_runner, state_dir=DEFAULT_STATE_DIR, fetch=fetch_page, sleep=time.sleep,
+         clock=time.monotonic):
     try:
         options = build_parser().parse_args(argv)
     except SystemExit as stop:
         return EXIT_OK if stop.code == 0 else EXIT_USAGE
     try:
-        return HANDLERS[options.group](options, Context(runner, state_dir, fetch))
+        return HANDLERS[options.group](options, Context(runner, state_dir, fetch, sleep, clock))
     except UsageError as error:
         print(f"mac_control: {error}", file=sys.stderr)
         return EXIT_USAGE

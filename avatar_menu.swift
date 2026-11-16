@@ -130,6 +130,10 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         add(ui("Show avatar", "아바타 보이기"), #selector(toggleAvatar), checked: avatarShown(), to: menu)
         add(ui("Show captions", "자막 보이기"), #selector(toggleCaptions), checked: captionsShown(), to: menu)
         add(ui("Show sound bars", "소리 막대 보이기"), #selector(toggleMeter), checked: meterShown(), to: menu)
+        add(ui("Show now playing", "재생 중 보이기"), #selector(toggleNowPlaying), checked: nowPlayingShown(), to: menu)
+        if detachedNowPlayingOrigin() != nil {
+            add(ui("Attach now playing to avatar", "재생 카드 아바타 옆으로"), #selector(attachNowPlaying), to: menu)
+        }
         menu.addItem(sizeMenuItem())
         add(ui("Move to top right", "오른쪽 위로 옮기기"), #selector(resetPosition), to: menu)
         menu.addItem(.separator())
@@ -251,6 +255,10 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
 
     @objc private func toggleMeter() { UserDefaults.standard.set(!meterShown(), forKey: meterShownDefaultsKey) }
 
+    @objc private func toggleNowPlaying() { UserDefaults.standard.set(!nowPlayingShown(), forKey: nowPlayingShownDefaultsKey) }
+
+    @objc private func attachNowPlaying() { attachNowPlayingToAvatar() }
+
     @objc private func chooseSize(_ sender: NSMenuItem) {
         avatarView.applyScale(avatarSizes[sender.tag].scale, save: true)
     }
@@ -258,7 +266,10 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
     // Back to the first place, the top right corner, at the current size: the photo keeps the
     // usual margin from the screen's edges whether it is small or large. Saved like a drag, as the
     // base-size origin around the same centre, so it is there again after a restart.
+    // Puts everything back in its first place: the avatar in the top right corner, and the
+    // now-playing card back beside it if it was set apart.
     @objc private func resetPosition() {
+        attachNowPlayingToAvatar()
         guard let screen = panel.screen ?? NSScreen.main else { return }
         let side = panel.frame.width
         let origin = cornerOrigin(scale: side / panelSide, in: screen.visibleFrame)

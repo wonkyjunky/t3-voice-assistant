@@ -32,6 +32,10 @@ WORK_MODEL="claude-sonnet-5-5"
 # Files that look like secrets (.env, keys, credentials) stay closed everywhere.
 ASSISTANT_READ_FOLDERS=""
 
+# "yes" if you subscribe to Apple Music: songs you name then play from Apple Music in the Music app
+# first (YouTube for moods and mixes). "no" plays songs on YouTube in your browser.
+APPLE_MUSIC="no"
+
 # What it says after your name when a voice conversation starts, in your persona's style.
 GREETING="부르셨어요?"
 

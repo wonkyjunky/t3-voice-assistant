@@ -50,12 +50,15 @@ Follow this README from top to bottom and you will end up with the same setup.
   - While speaking it shows a happy, sad, playful or comforting clip, chosen by the reply's first emotion tag.
   - Caption bubbles: your words appear live while you talk, and the reply fills in at the pace of speech in either language. The bubble grows to show the whole reply; a longer one scrolls smoothly, and with the pointer on it you can scroll back with the trackpad or wheel (it stays while you read). Korean wraps between words. The bubbles fade a few seconds after the voice stops, or soon after you end the conversation. Turn them off with "Show captions" in the menu.
   - Sound bars on the photo follow how loud your voice (while listening) and the assistant's voice (while speaking) are.
+  - A now-playing card next to the avatar shows the song playing on YouTube or YouTube Music in Chrome or in the Music app, with play/pause, next (and previous for Music) buttons and a slider for the music's own volume (the Mac's volume and the assistant's voice stay as they are). It stays for 2 minutes after you pause, so you can play again from it. Drag it by its background to put it anywhere; double-click it, or use "Move to top right" in the menu, to bring it back beside the avatar.
   - Hover to see a status label; scroll to resize it.
-  - A menu bar icon shows the state. Its menu, also opened by a right-click on the avatar, starts or ends a conversation, changes the keyboard shortcut, the main spoken language and the menu language (English by default, or 한국어), shows or hides the avatar, captions and sound bars, sets the avatar's size, moves it back to the top right corner and shows the ElevenLabs characters left.
+  - A menu bar icon shows the state. Its menu, also opened by a right-click on the avatar, starts or ends a conversation, changes the keyboard shortcut, the main spoken language and the menu language (English by default, or 한국어), shows or hides the avatar, captions, sound bars and the now-playing card, sets the avatar's size, moves it (and the now-playing card) back to the top right corner and shows the ElevenLabs characters left.
 - **Memory**: New sessions start with the notes in `assistant-memory.md`, and the assistant writes down what matters.
 - **Mac control**:
   - Changes the volume.
-  - Plays songs on YouTube right away, and pauses YouTube in Chrome or skips to the next video.
+  - Plays a song you name right away: from Apple Music in the Music app if you subscribe (`APPLE_MUSIC="yes"`; the app stays out of sight), otherwise on YouTube in your browser. Moods and mixes ("잔잔한 음악") play on YouTube.
+  - Plays music in one place at a time: starting a song pauses what plays elsewhere (YouTube in Chrome or the Music app), so it can be played again later. "멈춰", "다음 곡", "다시 틀어" and "이거 무슨 노래야" act on whatever plays.
+  - Makes just the music louder or quieter ("음악 소리만 줄여줘"), apart from the Mac's volume.
   - Controls the Music app.
   - Opens and quits apps. Only quitting asks first.
   - Turns music down during a conversation and back up afterwards.
@@ -98,6 +101,7 @@ settings contain the hook that speaks, so your other work threads stay silent.
 | Claude | A Claude plan that can use the Claude Code provider in T3 Code |
 | ElevenLabs | An account and API key. Voice cloning (Instant Voice Clone) needs a paid plan; check prices and included characters when you sign up |
 | Google Chrome | Needed to pause YouTube and skip videos (when it is your default browser) |
+| Apple Music | Optional. With a subscription and `APPLE_MUSIC="yes"`, songs you name play from Apple Music |
 | 9 avatar clips | You make them with the prompts in [docs/AVATAR.md](docs/AVATAR.md). They are not in this repository |
 
 ## Install
@@ -143,6 +147,7 @@ open -e assistant.conf    # fill in the values below
 | `GREETING` | `부르셨어요?` | What it says after your name when a conversation starts |
 | `PHRASE_*` | `알겠어요, 또 불러 주세요!` | Six fixed phrases spoken without the model (goodbye in Korean and English, errors). Match your persona's style |
 | `ASSISTANT_READ_FOLDERS` | `$HOME/Documents/Notes` | Optional. More folders the assistant may read, separated by `:` (see Security notes). Empty means only this folder |
+| `APPLE_MUSIC` | `no` | `yes` if you subscribe to Apple Music: songs you name play there first. `no` plays them on YouTube |
 
 Write the assistant's character and speech style in `persona.md`. The first install copies
 `persona.example.md` (a friendly polite secretary) to `persona.md`; change it as you like, using the
@@ -237,8 +242,8 @@ macOS asks for permissions the first few times. Choose **Allow** for all of them
 |---|---|---|
 | First conversation | Microphone, Speech Recognition | AssistantListen |
 | First run of a Shortcuts app shortcut (optional) | Running scripts | Shortcuts |
-| Playing music, starting a conversation | Control of Music, Google Chrome, System Events | T3 Code, Shortcuts, AssistantAvatar |
-| Pausing YouTube, skipping videos | In Chrome: View > Developer > Allow JavaScript from Apple Events | (turn on yourself) |
+| Playing music, starting a conversation, the now-playing card | Control of Music, Google Chrome, System Events | T3 Code, Shortcuts, AssistantAvatar |
+| Pausing YouTube, skipping videos, YouTube on the now-playing card | In Chrome: View > Developer > Allow JavaScript from Apple Events | (turn on yourself) |
 
 If you clicked "Don't Allow" by mistake, turn it back on in System Settings > Privacy & Security > Automation (or Microphone, Speech Recognition).
 
@@ -251,6 +256,7 @@ Press the shortcut or click the avatar, then speak (in Korean):
 - "블로그 스레드에 '오늘 한 일 정리해 줘'라고 보내 줘" (Send "sum up today's work" to the blog thread): it asks "보낼까?" and sends only after you say yes.
 - "아이유 노래 틀어줘", "잠깐 멈춰", "다음 곡", "다시 틀어", "이거 무슨 노래야?" (play, pause, next, resume, what is this song)
 - "볼륨 조금 줄여줘", "볼륨 30으로", "음소거" (a bit quieter, volume 30, mute)
+- "음악 소리만 줄여줘" (just the music quieter): the music's own volume, not the Mac's
 - "메모 앱 열어줘", "사파리 종료해 줘" (open Notes, quit Safari): quitting asks first.
 - To finish: "오늘은 여기까지", "그만 얘기하자", "잘 자"
 
@@ -291,6 +297,9 @@ The conversation ends on its own after silence or 30 turns. After the assistant 
 | A changed rule has no effect | Whether you tested in a new session (an existing session remembers the old prompt) |
 | YouTube does not pause | Chrome's "Allow JavaScript from Apple Events", Automation permission |
 | Search results open instead of a song | YouTube sent a different page layout. The page is kept in `youtube-miss.html` |
+| The now-playing card does not appear | "Show now playing" in the menu, AssistantAvatar's Automation permission for Chrome and Music, Chrome's "Allow JavaScript from Apple Events" (for YouTube) |
+| The now-playing card is somewhere odd | Double-click it, or choose "Move to top right" in the menu |
+| A song you named plays on YouTube, not Apple Music | `APPLE_MUSIC="yes"` in `assistant.conf`, then `./install.sh` and a new session. Songs Apple Music does not have still go to YouTube |
 | macOS asks for permissions again after a rebuild | Whether `./make_signing_identity.sh` ran (without the certificate, builds are signed ad hoc) |
 
 The logs (`voice.log`, `speak.log`) keep only states and lengths, never the words spoken.
@@ -314,6 +323,7 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 | `assistant_avatar.swift` | The floating video avatar |
 | `avatar_captions.swift`, `avatar_meter.swift` | The avatar's caption bubbles and sound bars |
 | `avatar_menu.swift`, `avatar_hotkey.swift` | The menu bar icon and menu, and the built-in keyboard shortcut |
+| `avatar_nowplaying.swift`, `avatar_nowplaying_card.swift` | What plays in Chrome or the Music app, and the now-playing card with its buttons and volume slider |
 | `listen_transcript.swift` | Keeps what was said across pauses (the recognizer starts over after each one) and picks Korean or English |
 | `listen_channel.swift` | One recognizer in one language, and the recording the second language listens to |
 | `file_search.py` | The fixed file search command the assistant uses instead of shell searches (readable folders only, no secret files) |
@@ -323,6 +333,8 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 | `guard_launch.py` | Hook that keeps new threads from becoming the assistant itself |
 | `tool_guard.py` | Hook that lets the assistant use only allowlisted tools, within set limits (see Security notes) |
 | `mac_control.py` | Volume, YouTube, Music and app control (fixed commands only) |
+| `apple_music.py` | Finds a song in the Apple Music catalog (Apple's public search) and plays it in the Music app |
+| `music_sources.py` | One music at a time across Chrome and the Music app, and the `playing` commands |
 | `credit_alert.py` | The 80% ElevenLabs usage alert |
 | `morning_digest.sh` | The 12:00 morning briefing |
 | `install.sh`, `uninstall.sh` | Install and uninstall |
@@ -354,7 +366,7 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 3. **What you say goes to outside services.** Only speech recognition stays on the Mac.
    - What you say, thread contents it reads, and the memory notes → Anthropic (Claude)
    - The assistant's reply text → ElevenLabs (to make the voice)
-   - Song search words → YouTube
+   - Song search words → YouTube, and Apple's iTunes Search when `APPLE_MUSIC="yes"`
    Each company's privacy policy applies. Do not tell the assistant sensitive things such as passwords, account numbers or health details.
 4. **The memory notes are not encrypted.** `assistant-memory.md` is a plain file on the Mac. There is a rule against writing sensitive details, but it is a rule the model follows. Look at the file now and then.
 5. **Programs in the same macOS account can use the signing key.** Malware already running in your account could sign itself as the listener app. Do not install this in a macOS account shared by several people.

@@ -380,6 +380,12 @@ final class Captions {
         updateFade(at: now)
     }
 
+    /// Moves the bubbles along while the avatar is dragged, between ticks, so they keep up with it.
+    func follow(photo: NSRect) {
+        guard panel.isVisible else { return }
+        panel.setFrame(frame(height: panel.frame.height, photo: photo), display: false)
+    }
+
     // Fading is handed to the window server once, so it runs at the screen's frame rate instead of
     // at this 10-per-second tick.
     private func updateFade(at now: TimeInterval) {

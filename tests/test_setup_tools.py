@@ -59,12 +59,18 @@ class RenderTests(unittest.TestCase):
             render_template.render("Hi {{NAME}} {{OTHER}}", {"NAME": "A", "OTHER": ""})
 
     def test_every_template_renders_with_example_values(self):
-        values = {**assistant_config.read(REPO / "assistant.conf.example"), "ASSISTANT_DIR": "/repo", "PYTHON": "/py",
+        config = assistant_config.read(REPO / "assistant.conf.example")
+        values = {**config, "ASSISTANT_DIR": "/repo", "PYTHON": "/py", "SONG_RULE": render_template.song_rule(config),
                   "PERSONA": (REPO / "persona.example.md").read_text(encoding="utf-8")}
         for template in sorted((REPO / "templates").glob("*.tmpl")):
             with self.subTest(template=template.name):
                 rendered = render_template.render(template.read_text(encoding="utf-8"), values)
                 self.assertNotIn("{{", rendered)
+
+    def test_song_rule_follows_the_apple_music_setting(self):
+        self.assertIn("music song", render_template.song_rule({"APPLE_MUSIC": "yes"}).split("first")[0])
+        self.assertTrue(render_template.song_rule({"APPLE_MUSIC": "no"}).startswith("- When the user asks for a song"))
+        self.assertEqual(render_template.song_rule({}), render_template.YOUTUBE_SONG_RULE)
 
     def test_settings_register_the_tool_guard_for_risky_tools(self):
         import json

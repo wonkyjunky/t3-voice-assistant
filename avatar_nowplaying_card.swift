@@ -1,0 +1,429 @@
+// The "now playing" card next to the avatar: the song, where it plays, buttons to play or pause,
+// skip and go back (Music), and a slider for the music's own volume (not the Mac's, so the
+// assistant's voice keeps its level). It shows while music plays
+// and for a while after it is paused, then fades out. What plays comes from avatar_nowplaying.swift.
+//
+// Dragging the card by its background takes it off the avatar and leaves it where it is dropped
+// (saved, so it stays there); a double-click, "Attach now playing to avatar" or "Move to top right"
+// in the menu puts it back beside the avatar.
+//
+// A button runs mac_control.py, the same fixed command the assistant uses, so the card can do
+// nothing the assistant cannot. The card changes right away and the next check confirms it.
+
+import AppKit
+
+let nowPlayingSize = NSSize(width: 300, height: 84)
+// The song row; the volume row sits below it.
+let nowPlayingTopHeight: CGFloat = 56
+let nowPlayingGap: CGFloat = 16
+let nowPlayingFadeSeconds: TimeInterval = 0.3
+let nowPlayingButtonSize: CGFloat = 26
+let nowPlayingButtonGap: CGFloat = 2
+let nowPlayingSideMargin: CGFloat = 10
+// After a button, the next check comes this soon, to show what the player really did.
+let nowPlayingRecheckSeconds: TimeInterval = 0.6
+// After the slider moves, checks keep the chosen level this long (an answer asked before may be older).
+let volumeHoldSeconds: TimeInterval = 2.5
+let macControlPython = "/opt/homebrew/bin/python3"
+let nowPlayingOriginDefaultsKey = "nowPlayingOrigin"
+let cardDragThreshold: CGFloat = 3
+
+/// Where the card was left when it was taken off the avatar, or nil while it sits beside the avatar.
+func detachedNowPlayingOrigin() -> NSPoint? {
+    guard let saved = UserDefaults.standard.string(forKey: nowPlayingOriginDefaultsKey) else { return nil }
+    let origin = NSPointFromString(saved)
+    let card = NSRect(origin: origin, size: nowPlayingSize)
+    // A screen that is gone (an unplugged display) puts the card back on the avatar.
+    return NSScreen.screens.contains { $0.visibleFrame.intersects(card) } ? origin : nil
+}
+
+func attachNowPlayingToAvatar() {
+    UserDefaults.standard.removeObject(forKey: nowPlayingOriginDefaultsKey)
+}
+
+/// A button that works on the first click even though the avatar app never becomes active.
+final class CardButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// A slider that works on the first click too.
+final class CardSlider: NSSlider {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+func symbolName(for control: NowPlayingControl, isPlaying: Bool) -> String {
+    switch control {
+    case .previous: return "backward.fill"
+    case .playPause: return isPlaying ? "pause.fill" : "play.fill"
+    case .next: return "forward.fill"
+    }
+}
+
+final class NowPlayingView: NSView {
+    var onControl: ((NowPlayingControl) -> Void)?
+    var onVolume: ((Int) -> Void)?
+    private(set) var isDragging = false
+    private var dragStartMouse = NSPoint.zero
+    private var dragStartOrigin = NSPoint.zero
+    private let volumeSlider = CardSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: nil)
+    private let badge = CALayer()
+    private let badgeText = NSTextField(labelWithString: "▶")
+    private let titleField = NSTextField(labelWithString: "")
+    private let detailField = NSTextField(labelWithString: "")
+    private var bars: [CALayer] = []
+    private var buttons: [(NowPlayingControl, CardButton)] = []
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 14
+        layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.6).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.14).cgColor
+        let top = frame.height - nowPlayingTopHeight
+        badge.frame = CGRect(x: 12, y: top + (nowPlayingTopHeight - 24) / 2, width: 34, height: 24)
+        badge.cornerRadius = 7
+        layer?.addSublayer(badge)
+        badgeText.frame = NSRect(x: 12, y: top + (nowPlayingTopHeight - 16) / 2, width: 34, height: 16)
+        badgeText.alignment = .center
+        badgeText.font = .systemFont(ofSize: 11, weight: .bold)
+        badgeText.textColor = .white
+        addSubview(badgeText)
+        for (field, y, font, color) in [(titleField, 28.0, NSFont.systemFont(ofSize: 12, weight: .semibold), NSColor.white),
+                                        (detailField, 11.0, NSFont.systemFont(ofSize: 11), NSColor(calibratedWhite: 1, alpha: 0.6))] {
+            field.frame = NSRect(x: 56, y: top + y, width: 100, height: 16)
+            field.font = font
+            field.textColor = color
+            field.lineBreakMode = .byTruncatingTail
+            addSubview(field)
+        }
+        setUpBars()
+        setUpVolumeRow(height: top)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    // 🔈 ━━━●━━━ 🔊 under the song row.
+    private func setUpVolumeRow(height: CGFloat) {
+        let iconSize: CGFloat = 16
+        let middle = height / 2 + 2
+        for (name, x) in [("speaker.fill", 16.0), ("speaker.wave.3.fill", bounds.width - 16 - iconSize)] {
+            let icon = NSImageView(frame: NSRect(x: x, y: middle - iconSize / 2, width: iconSize, height: iconSize))
+            icon.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+            icon.contentTintColor = NSColor(calibratedWhite: 1, alpha: 0.6)
+            addSubview(icon)
+        }
+        let start = 16 + iconSize + 6
+        volumeSlider.frame = NSRect(x: start, y: middle - 10, width: bounds.width - start * 2, height: 20)
+        volumeSlider.controlSize = .small
+        volumeSlider.isContinuous = true
+        volumeSlider.trackFillColor = .white
+        volumeSlider.target = self
+        volumeSlider.action = #selector(volumeMoved(_:))
+        addSubview(volumeSlider)
+    }
+
+    @objc private func volumeMoved(_ sender: NSSlider) {
+        onVolume?(Int(sender.doubleValue.rounded()))
+    }
+
+    // Three bars that bounce like an equalizer inside the badge while music plays, each at its own
+    // pace (Core Animation, no timer). A paused song shows its mark instead.
+    private func setUpBars() {
+        let speeds: [CFTimeInterval] = [0.45, 0.62, 0.38]
+        for (index, speed) in speeds.enumerated() {
+            let bar = CALayer()
+            bar.anchorPoint = CGPoint(x: 0.5, y: 0)
+            bar.frame = CGRect(x: badge.frame.midX - 8 + CGFloat(index) * 6, y: badge.frame.minY + 5, width: 3, height: 14)
+            bar.cornerRadius = 1.5
+            bar.backgroundColor = NSColor.white.cgColor
+            let bounce = CABasicAnimation(keyPath: "transform.scale.y")
+            bounce.fromValue = 0.25
+            bounce.toValue = 1
+            bounce.duration = speed
+            bounce.autoreverses = true
+            bounce.repeatCount = .infinity
+            bounce.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            bar.add(bounce, forKey: "bounce")
+            layer?.addSublayer(bar)
+            bars.append(bar)
+        }
+    }
+
+    func show(_ playing: NowPlaying) {
+        let color = playing.source == .music
+            ? NSColor(calibratedRed: 0.99, green: 0.24, blue: 0.4, alpha: 1)
+            : NSColor(calibratedRed: 1, green: 0.24, blue: 0.24, alpha: 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        badge.backgroundColor = color.cgColor
+        bars.forEach { $0.isHidden = !playing.isPlaying }
+        CATransaction.commit()
+        badgeText.isHidden = playing.isPlaying
+        badgeText.stringValue = playing.source == .music ? "♪" : "▶"
+        titleField.stringValue = playing.title
+        detailField.stringValue = playing.detail
+        volumeSlider.isEnabled = playing.volume != nil
+        if let volume = playing.volume, Int(volumeSlider.doubleValue.rounded()) != volume {
+            volumeSlider.doubleValue = Double(volume)
+        }
+        layOutButtons(for: playing)
+    }
+
+    // The buttons sit at the right; the song's words take the room left between badge and buttons.
+    private func layOutButtons(for playing: NowPlaying) {
+        let wanted = controls(for: playing.source)
+        if buttons.map(\.0) != wanted {
+            buttons.forEach { $0.1.removeFromSuperview() }
+            buttons = wanted.map { control in (control, makeButton(for: control)) }
+        }
+        var x = bounds.width - nowPlayingSideMargin
+        for (control, button) in buttons.reversed() {
+            x -= nowPlayingButtonSize
+            button.frame = NSRect(x: x, y: bounds.height - nowPlayingTopHeight + (nowPlayingTopHeight - nowPlayingButtonSize) / 2,
+                                  width: nowPlayingButtonSize, height: nowPlayingButtonSize)
+            button.image = NSImage(systemSymbolName: symbolName(for: control, isPlaying: playing.isPlaying),
+                                   accessibilityDescription: nil)
+            x -= nowPlayingButtonGap
+        }
+        let wordsWidth = max(0, x - 6 - titleField.frame.minX)
+        for field in [titleField, detailField] {
+            field.frame.size.width = wordsWidth
+        }
+    }
+
+    private func makeButton(for control: NowPlayingControl) -> CardButton {
+        let button = CardButton(frame: .zero)
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        button.contentTintColor = .white
+        button.target = self
+        button.action = #selector(pressed(_:))
+        addSubview(button)
+        return button
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // The card's background moves it; a double-click puts it back beside the avatar.
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            attachNowPlayingToAvatar()
+            return
+        }
+        dragStartMouse = NSEvent.mouseLocation
+        dragStartOrigin = window?.frame.origin ?? .zero
+        isDragging = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let mouse = NSEvent.mouseLocation
+        let dx = mouse.x - dragStartMouse.x
+        let dy = mouse.y - dragStartMouse.y
+        if hypot(dx, dy) > cardDragThreshold { isDragging = true }
+        guard isDragging else { return }
+        window?.setFrameOrigin(NSPoint(x: dragStartOrigin.x + dx, y: dragStartOrigin.y + dy))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isDragging else { return }
+        isDragging = false
+        if let origin = window?.frame.origin {
+            UserDefaults.standard.set(NSStringFromPoint(origin), forKey: nowPlayingOriginDefaultsKey)
+        }
+    }
+
+    @objc private func pressed(_ sender: NSButton) {
+        guard let control = buttons.first(where: { $0.1 === sender })?.0 else { return }
+        onControl?(control)
+    }
+}
+
+final class NowPlayingCard {
+    private let panel: NSPanel
+    private let view = NowPlayingView(frame: NSRect(origin: .zero, size: nowPlayingSize))
+    private let folder: URL
+    private var playing: NowPlaying?
+    private var lastPlayingAt: Date?
+    private var checking = false
+    private var lastCheck = Date.distantPast
+    private var visible = false
+    // Bumped by each button press, so an answer asked for before the press cannot undo it.
+    private var generation = 0
+    // The slider's level and until when checks keep it; the newest level waiting to be sent.
+    private var heldVolume: (level: Int, until: Date)?
+    private var pendingVolume: Int?
+    private var sendingVolume = false
+
+    init(folder: URL) {
+        self.folder = folder
+        panel = NSPanel(contentRect: view.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.contentView = view
+        view.onControl = { [weak self] control in self?.press(control) }
+        view.onVolume = { [weak self] level in self?.slide(to: level) }
+    }
+
+    /// Called on every avatar tick with the photo's place on screen.
+    func update(photo: NSRect, avatarShown: Bool) {
+        if !checking && Date().timeIntervalSince(lastCheck) >= nowPlayingCheckSeconds { check() }
+        guard nowPlayingShown(), avatarShown, cardShows(playing, lastPlayingAt: lastPlayingAt, now: Date()),
+              let playing else {
+            hide()
+            return
+        }
+        view.show(playing)
+        if !view.isDragging { panel.setFrameOrigin(origin(next: photo)) }
+        show()
+    }
+
+    /// Moves the card along while the avatar is dragged, between ticks (not when it was set apart).
+    func follow(photo: NSRect) {
+        guard visible, detachedNowPlayingOrigin() == nil else { return }
+        panel.setFrameOrigin(origin(next: photo))
+    }
+
+    private func check() {
+        checking = true
+        lastCheck = Date()
+        let folder = self.folder
+        let asked = generation
+        let shownBefore = playing?.source
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = pickNowPlaying(everythingPlaying(folder: folder), shownBefore: shownBefore)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.checking = false
+                if asked == self.generation { self.heard(found) }
+            }
+        }
+    }
+
+    private func heard(_ found: NowPlaying?) {
+        if let held = heldVolume, Date() < held.until, let found {
+            playing = found.with(volume: held.level)
+        } else {
+            playing = found
+        }
+        if found == nil {
+            lastPlayingAt = nil
+        } else if found?.isPlaying == true {
+            lastPlayingAt = Date()
+        }
+    }
+
+    // The card shows the press at once (pause flips the button), runs the
+    // command, then checks again soon.
+    private func press(_ control: NowPlayingControl) {
+        guard let playing else { return }
+        generation += 1
+        let arguments = macControlArguments(for: control, on: playing)
+        switch control {
+        case .playPause:
+            heard(playing.with(isPlaying: !playing.isPlaying))
+        case .previous, .next:
+            break
+        }
+        if let shown = self.playing, cardShows(shown, lastPlayingAt: lastPlayingAt, now: Date()) {
+            view.show(shown)
+        } else {
+            hide()
+        }
+        let script = folder.appendingPathComponent("mac_control.py").path
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            runMacControl(script: script, arguments: arguments)
+            DispatchQueue.main.async {
+                self?.lastCheck = Date().addingTimeInterval(nowPlayingRecheckSeconds - nowPlayingCheckSeconds)
+            }
+        }
+    }
+
+    // The level shows at once; mac_control.py runs for the newest level, one run at a time, so a
+    // fast drag sends a few commands instead of dozens.
+    private func slide(to level: Int) {
+        guard let playing else { return }
+        self.playing = playing.with(volume: level)
+        heldVolume = (level, Date().addingTimeInterval(volumeHoldSeconds))
+        pendingVolume = level
+        sendVolume()
+    }
+
+    private func sendVolume() {
+        guard !sendingVolume, let level = pendingVolume, let playing else { return }
+        pendingVolume = nil
+        sendingVolume = true
+        heldVolume = (level, Date().addingTimeInterval(volumeHoldSeconds))
+        let arguments = macControlVolumeArguments(level, on: playing)
+        let script = folder.appendingPathComponent("mac_control.py").path
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            runMacControl(script: script, arguments: arguments)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.sendingVolume = false
+                if let held = self.heldVolume {
+                    self.heldVolume = (held.level, Date().addingTimeInterval(volumeHoldSeconds))
+                }
+                self.sendVolume()
+            }
+        }
+    }
+
+    // Beside the photo, toward the middle of the screen, level with the photo's top so it stays
+    // clear of the caption bubbles below.
+    private func origin(next photo: NSRect) -> NSPoint {
+        if let detached = detachedNowPlayingOrigin() { return detached }
+        let screen = NSScreen.screens.first { $0.frame.intersects(photo) } ?? NSScreen.main
+        let middle = screen?.visibleFrame.midX ?? photo.midX
+        let x = photo.midX > middle ? photo.minX - nowPlayingGap - nowPlayingSize.width : photo.maxX + nowPlayingGap
+        return NSPoint(x: x, y: photo.maxY - nowPlayingSize.height)
+    }
+
+    private func show() {
+        guard !visible else { return }
+        visible = true
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = nowPlayingFadeSeconds
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    private func hide() {
+        guard visible else { return }
+        visible = false
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = nowPlayingFadeSeconds
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            guard let self, !self.visible else { return }
+            self.panel.orderOut(nil)
+        })
+    }
+}
+
+/// Runs mac_control.py with fixed arguments and waits for it (off the main thread).
+private func runMacControl(script: String, arguments: [String]) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: macControlPython)
+    process.arguments = ["-I", script] + arguments
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    do {
+        try process.run()
+        process.waitUntilExit()
+    } catch {
+        NSLog("now playing: could not run mac_control.py: \(error.localizedDescription)")
+    }
+}

@@ -149,5 +149,59 @@ do {
     expect(loud[3] > loud[0], "the middle bar is the tallest")
 }
 
+// The now-playing card: what Chrome's YouTube tabs and the Music app report.
+do {
+    let music = parseChromeNowPlaying("https://music.youtube.com/watch?v=x\n{\"playing\":true,\"title\":\"Love wins all\",\"artist\":\"IU\"}")
+    expect(music == NowPlaying(title: "Love wins all", detail: "IU · YouTube Music", source: .youtube, isPlaying: true),
+           "a playing YouTube Music tab shows its song and artist")
+    let video = parseChromeNowPlaying("https://www.youtube.com/watch?v=y\n{\"playing\":true,\"title\":\"lofi beats - YouTube\",\"artist\":\"\"}")
+    expect(video == NowPlaying(title: "lofi beats", detail: "YouTube", source: .youtube, isPlaying: true),
+           "a YouTube video without an artist shows only YouTube, without the page suffix")
+    let pausedTab = parseChromeNowPlaying("https://www.youtube.com/watch?v=y\n{\"playing\":false,\"started\":true,\"title\":\"x\",\"artist\":\"\"}")
+    expect(pausedTab?.isPlaying == false, "a paused tab that had started is reported as paused")
+    expect(parseChromeNowPlaying("https://music.youtube.com/\n{\"playing\":false,\"started\":false,\"title\":\"x\",\"artist\":\"\"}") == nil,
+           "a tab that never started shows nothing")
+    expect(parseChromeNowPlaying("") == nil && parseChromeNowPlaying("garbage") == nil, "no answer shows nothing")
+    expect(parseChromeNowPlaying("https://www.youtube.com/watch?v=y\n{\"playing\":true,\"volume\":30,\"title\":\"x\",\"artist\":\"\"}")?.volume == 30,
+           "a YouTube tab's volume is read")
+    expect(parseMusicNowPlaying("playing\nHype Boy\nNewJeans") == NowPlaying(title: "Hype Boy", detail: "NewJeans · Music", source: .music, isPlaying: true),
+           "the Music app's playing song is shown")
+    expect(parseMusicNowPlaying("playing\nHype Boy\nNewJeans\n54")?.volume == 54, "Music's own volume is read")
+    expect(parseMusicNowPlaying("paused\nUntitled\n") == NowPlaying(title: "Untitled", detail: "Music", source: .music, isPlaying: false),
+           "a paused song without an artist still shows")
+    expect(parseMusicNowPlaying("") == nil && parseMusicNowPlaying("stopped\nx\ny") == nil, "a stopped Music app shows nothing")
+}
+
+// The card's buttons, volume slider and when it shows.
+do {
+    let song = NowPlaying(title: "x", detail: "YouTube", source: .youtube, isPlaying: true)
+    let musicSong = NowPlaying(title: "x", detail: "Music", source: .music, isPlaying: true, volume: 54)
+    expect(controls(for: .youtube) == [.playPause, .next], "YouTube gets play/pause and next")
+    expect(controls(for: .music) == [.previous, .playPause, .next], "Music gets previous, play/pause and next")
+    expect(macControlArguments(for: .playPause, on: song) == ["youtube", "pause"], "a playing song's button pauses it")
+    expect(macControlArguments(for: .playPause, on: song.with(isPlaying: false)) == ["youtube", "resume"],
+           "a paused song's button plays it again")
+    expect(macControlArguments(for: .playPause, on: musicSong.with(isPlaying: false)) == ["music", "play"],
+           "Music's play button uses play, which pauses music elsewhere first")
+    expect(macControlArguments(for: .previous, on: musicSong) == ["music", "previous"], "Music goes back a song")
+    expect(macControlVolumeArguments(70, on: musicSong) == ["music", "volume", "70"], "Music's slider sets Music's volume")
+    expect(macControlVolumeArguments(140, on: song) == ["youtube", "volume", "100"], "a level past the end is held to 100")
+    let pausedVideo = song.with(isPlaying: false)
+    expect(pickNowPlaying([pausedVideo, musicSong], shownBefore: .youtube) == musicSong,
+           "the card shows what plays, not a paused tab found first")
+    let pausedMusic = musicSong.with(isPlaying: false)
+    expect(pickNowPlaying([pausedVideo, pausedMusic], shownBefore: .music) == pausedMusic,
+           "with everything paused the card keeps showing what it showed")
+    expect(pickNowPlaying([], shownBefore: .music) == nil, "nothing anywhere shows nothing")
+    let now = Date()
+    expect(cardShows(song, lastPlayingAt: nil, now: now), "a playing song shows")
+    expect(cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-30), now: now),
+           "a song paused half a minute ago still shows, to be played again")
+    expect(!cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-(pausedCardSeconds + 1)), now: now),
+           "a song paused long ago hides")
+    expect(!cardShows(pausedVideo, lastPlayingAt: nil, now: now), "a song never seen playing hides")
+    expect(!cardShows(nil, lastPlayingAt: now, now: now), "nothing playing hides")
+}
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

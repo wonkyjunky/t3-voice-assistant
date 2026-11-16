@@ -23,9 +23,27 @@ class FakeRunner:
 
 
 def run_cli(argv, runner, state_dir=None, fetch=None):
-    state_dir = state_dir or tempfile.mkdtemp()
+    state_dir = Path(state_dir or tempfile.mkdtemp())
     fetch = fetch or (lambda url: None)
-    return mc.main(argv, runner=runner, state_dir=Path(state_dir), fetch=fetch)
+    clock = FakeClock()
+    return mc.main(argv, runner=runner, state_dir=state_dir, fetch=fetch, sleep=clock.sleep, clock=clock)
+
+
+# What the state checks before starting music see when nothing else plays: no Chrome tab, Music closed.
+NOTHING_ELSE_PLAYS = [(0, "no-browser"), (0, "")]
+
+
+class FakeClock:
+    """Time that moves only when the code under test sleeps."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now = round(self.now + seconds, 6)
 
 
 SEARCH_PAGE = (
@@ -64,18 +82,131 @@ class VolumeTests(unittest.TestCase):
         self.assertEqual(run_cli(["volume", "mute"], runner), mc.EXIT_FAILED)
 
 
+CATALOG_ANSWER = (
+    '{"resultCount":1,"results":[{"trackId":1712645271,"collectionId":1712644900,'
+    '"trackName":"Shika","artistName":"Zuchu"}]}'
+)
+
+
+class MusicApp:
+    """Answers mac_control's Music scripts like the app would: its library is empty; a song page
+    opened with open -g becomes playable after loads_after plays, and play starts its album (the
+    tracks in album) from the first track."""
+
+    def __init__(self, running, loads_after, album=("Shika",)):
+        self.running = running
+        self.loads_after = loads_after
+        self.album = list(album)
+        self.page = None
+        self.playing = None
+        self.volume = "54"
+        self.volumes = []
+        self.calls = []
+
+    def __call__(self, args):
+        self.calls.append(list(args))
+        if args[0] == mc.apple_music.OPEN:
+            if "-j" in args:
+                self.running = True
+            else:
+                self.page = self.album
+            return mc.Result(0, "")
+        script = args[2]
+        if "is running" in script:
+            return mc.Result(0, "true" if self.running else "false")
+        if "search library" in script:
+            return mc.Result(0, "")
+        if script.endswith(" to play"):
+            if self.page and self.loads_after <= 0 and self.playing is None:
+                self.playing = self.page[0]
+            self.loads_after -= 1
+            return mc.Result(0, "")
+        if script.endswith(" to next track") and self.playing:
+            self.playing = self.page[(self.page.index(self.playing) + 1) % len(self.page)]
+            return mc.Result(0, "")
+        if script.endswith(" to stop"):
+            self.playing = None
+            return mc.Result(0, "")
+        if "return sound volume" in script:
+            return mc.Result(0, self.volume)
+        if "set sound volume" in script:
+            self.volumes.append(args[-1])
+            return mc.Result(0, "")
+        if "current track" in script:
+            return mc.Result(0, f"{self.playing}\nZuchu") if self.playing else mc.Result(1, "")
+        return mc.Result(0, "")
+
+
 class MusicTests(unittest.TestCase):
     def test_song_query_is_passed_as_argument_not_in_script(self):
         query = 'IU "Blueming"'
-        runner = FakeRunner((0, "Blueming - IU"))
+        runner = FakeRunner(*NOTHING_ELSE_PLAYS, (0, "true"), (0, "Blueming - IU"))
         self.assertEqual(run_cli(["music", "song", query], runner), mc.EXIT_OK)
-        call = runner.calls[0]
+        call = runner.calls[3]
         self.assertEqual(call[-1], query)
         self.assertNotIn("Blueming", call[2])
 
-    def test_song_without_match_is_not_found(self):
-        runner = FakeRunner((0, ""))
-        self.assertEqual(run_cli(["music", "song", "nothing here"], runner), mc.EXIT_NOT_FOUND)
+    def test_song_in_neither_library_nor_catalog_is_not_found(self):
+        runner = FakeRunner((0, "true"), (0, ""))
+        fetch = lambda url: '{"resultCount":0,"results":[]}'
+        self.assertEqual(run_cli(["music", "song", "nothing here"], runner, fetch=fetch), mc.EXIT_NOT_FOUND)
+
+    def test_song_missing_from_library_plays_from_apple_music(self):
+        runner = MusicApp(running=True, loads_after=2)
+        fetched = []
+        fetch = lambda url: fetched.append(url) or CATALOG_ANSWER
+        self.assertEqual(run_cli(["music", "song", "shika"], runner, fetch=fetch), mc.EXIT_OK)
+        self.assertIn("term=shika", fetched[0])
+        self.assertIn([mc.apple_music.OPEN, "-g", "music://music.apple.com/us/album/1712644900?i=1712645271"], runner.calls)
+        self.assertEqual(runner.playing, "Shika")
+
+    def test_a_song_inside_an_album_is_reached_silently_and_the_volume_comes_back(self):
+        runner = MusicApp(running=True, loads_after=0, album=("Attention", "Hype Boy", "Cookie"))
+        answer = CATALOG_ANSWER.replace('"Shika"', '"Hype Boy"')
+        self.assertEqual(run_cli(["music", "song", "hype boy"], runner, fetch=lambda url: answer), mc.EXIT_OK)
+        self.assertEqual(runner.playing, "Hype Boy")
+        self.assertEqual(runner.volumes, ["0", "54"], "silent while skipping, then back to the user's level")
+
+    def test_a_song_never_found_in_the_album_stops_and_restores_the_volume(self):
+        runner = MusicApp(running=True, loads_after=0, album=("Attention", "Cookie"))
+        answer = CATALOG_ANSWER.replace('"Shika"', '"Hype Boy"').replace('"trackId"', '"trackCount":2,"trackId"')
+        self.assertEqual(run_cli(["music", "song", "hype boy"], runner, fetch=lambda url: answer), mc.EXIT_FAILED)
+        self.assertIsNone(runner.playing)
+        self.assertEqual(runner.volumes[-1], "54")
+
+    def test_a_page_music_did_not_take_is_opened_again(self):
+        runner = MusicApp(running=True, loads_after=0, album=("Shika",))
+        opened = []
+        original = runner.__call__
+
+        def ignore_first_open(args):
+            if args[0] == mc.apple_music.OPEN and "-j" not in args:
+                opened.append(args)
+                if len(opened) == 1:
+                    runner.calls.append(list(args))
+                    return mc.Result(0, "")
+            return original(args)
+
+        code = run_cli(["music", "song", "shika"], ignore_first_open, fetch=lambda url: CATALOG_ANSWER)
+        self.assertEqual(code, mc.EXIT_OK)
+        self.assertEqual(len(opened), 2)
+
+    def test_closed_music_app_is_started_hidden(self):
+        runner = MusicApp(running=False, loads_after=0)
+        run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER)
+        self.assertIn([mc.apple_music.OPEN, "-g", "-j", "-b", "com.apple.Music"], runner.calls)
+
+    def test_catalog_link_is_built_only_from_numeric_ids(self):
+        songs = mc.apple_music.parse_songs(
+            '{"results":[{"trackId":"1;rm","collectionId":2,"trackName":"x"},'
+            '{"trackId":5,"collectionId":6,"trackName":"ok","trackViewUrl":"javascript:alert(1)"}]}'
+        )
+        self.assertEqual([mc.apple_music.song_link(song) for song in songs], ["music://music.apple.com/us/album/6?i=5"])
+
+    def test_unreadable_catalog_answer_finds_nothing(self):
+        self.assertEqual(mc.apple_music.parse_songs("<html>"), [])
+        self.assertEqual(mc.apple_music.parse_songs(None), [])
+
 
     def test_missing_playlist_is_not_found(self):
         runner = FakeRunner((0, ""))
@@ -164,12 +295,34 @@ class YoutubeTests(unittest.TestCase):
         self.assertEqual((state_dir / mc.YOUTUBE_MISS_NAME).read_text(), "<html>odd</html>")
 
     def test_youtube_play_opens_first_video(self):
-        runner = FakeRunner((0, ""))
+        runner = FakeRunner(*NOTHING_ELSE_PLAYS, (0, ""))
         fetched = []
         fetch = lambda url: fetched.append(url) or SEARCH_PAGE
         self.assertEqual(run_cli(["youtube", "play", "아이유 밤편지"], runner, fetch=fetch), mc.EXIT_OK)
         self.assertTrue(fetched[0].startswith(mc.YOUTUBE_SEARCH_URL))
-        self.assertEqual(runner.calls[0], [mc.OPEN, "https://www.youtube.com/watch?v=EjMTw4xLcBI"])
+        self.assertEqual(runner.calls[-1], [mc.OPEN, "https://www.youtube.com/watch?v=EjMTw4xLcBI"])
+
+    def test_youtube_play_pauses_the_music_app_first(self):
+        runner = FakeRunner((0, "no-browser"), (0, "playing"))
+        run_cli(["youtube", "play", "아이유"], runner, fetch=lambda url: SEARCH_PAGE)
+        self.assertEqual(runner.calls[2][-1], "pause", "the playing Music app is paused")
+
+    def test_youtube_volume_sets_chrome_tabs(self):
+        runner = FakeRunner((0, "set"))
+        self.assertEqual(run_cli(["youtube", "volume", "40"], runner), mc.EXIT_OK)
+        self.assertIn("v.volume=0.40", runner.calls[0][-2])
+
+    def test_volume_level_must_be_0_to_100(self):
+        self.assertEqual(run_cli(["youtube", "volume", "150"], FakeRunner()), mc.EXIT_USAGE)
+        self.assertEqual(run_cli(["music", "volume", "loud"], FakeRunner()), mc.EXIT_USAGE)
+
+    def test_music_volume_is_passed_as_argument_and_forgets_a_lowering(self):
+        state_dir = Path(tempfile.mkdtemp())
+        (state_dir / mc.DUCK_STATE_NAME).write_text("60\n")
+        runner = FakeRunner((0, ""))
+        self.assertEqual(run_cli(["music", "volume", "30"], runner, state_dir), mc.EXIT_OK)
+        self.assertEqual(runner.calls[0][-1], "30")
+        self.assertFalse((state_dir / mc.DUCK_STATE_NAME).exists())
 
     def test_youtube_play_falls_back_to_search_when_no_video_found(self):
         runner = FakeRunner((0, ""))
@@ -211,14 +364,14 @@ class YoutubeControlTests(unittest.TestCase):
         self.assertEqual(run_cli(["youtube", "pause"], runner), mc.EXIT_FAILED)
 
     def test_resume_plays_first_tab_when_none_was_paused_by_the_assistant(self):
-        runner = FakeRunner((0, "unmarked\nunmarked"), (0, "resumed"))
+        runner = FakeRunner(*NOTHING_ELSE_PLAYS, (0, "unmarked\nunmarked"), (0, "resumed"))
         self.assertEqual(run_cli(["youtube", "resume"], runner), mc.EXIT_OK)
-        self.assertEqual(runner.calls[1][4], "first")
+        self.assertEqual(runner.calls[3][4], "first")
 
     def test_resume_of_paused_tab_needs_one_call(self):
-        runner = FakeRunner((0, "resumed\nunmarked"))
+        runner = FakeRunner(*NOTHING_ELSE_PLAYS, (0, "resumed\nunmarked"))
         self.assertEqual(run_cli(["youtube", "resume"], runner), mc.EXIT_OK)
-        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(len(runner.calls), len(NOTHING_ELSE_PLAYS) + 1)
 
     def test_next_with_nothing_playing_is_not_found(self):
         runner = FakeRunner((0, "skip\nskip"))

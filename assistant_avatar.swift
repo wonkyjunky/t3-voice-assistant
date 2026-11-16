@@ -300,6 +300,8 @@ final class AvatarView: NSView {
     private var shownClip: String?
     private var clipsStartedInState: Set<String> = []
     private var dragStartMouse = NSPoint.zero
+    /// Called with the photo's new place on screen each time a drag moves the avatar.
+    var onMove: ((NSRect) -> Void)?
     private var dragStartOrigin = NSPoint.zero
     private var dragged = false
     // Everything drawn sits in contentLayer at the base size; resizing scales it as one piece.
@@ -421,18 +423,22 @@ final class AvatarView: NSView {
         return window.convertToScreen(convert(scaledPhotoRect, to: nil))
     }
 
+    // As wide as its words need (English labels are longer than Korean ones), never narrower than labelSize.
     private func layoutLabel() {
+        let width = max(labelSize.width, ceil(labelText.intrinsicContentSize.width) + 24)
         label.frame = NSRect(
-            x: bounds.midX - labelSize.width / 2,
+            x: bounds.midX - width / 2,
             y: scaledPhotoRect.minY - labelGap - labelSize.height,
-            width: labelSize.width,
+            width: width,
             height: labelSize.height
         )
+        labelText.frame = label.bounds.insetBy(dx: 8, dy: 5)
     }
 
     /// Shows the hover label in the current menu language (after the language changes).
     func refreshLabel() {
         labelText.stringValue = (shownState ?? .idle).label
+        layoutLabel()
     }
 
     /// Resizes the avatar around its centre, keeping it between the smallest and largest size.
@@ -519,6 +525,7 @@ final class AvatarView: NSView {
         shownState = state
         let look = state.look
         labelText.stringValue = state.label
+        layoutLabel()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         setTurnSpeed(look.turnSpeed, of: crispRing)
@@ -579,6 +586,7 @@ final class AvatarView: NSView {
         if hypot(dx, dy) > dragThreshold { dragged = true }
         guard dragged else { return }
         window?.setFrameOrigin(NSPoint(x: dragStartOrigin.x + dx, y: dragStartOrigin.y + dy))
+        onMove?(photoOnScreen)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -637,8 +645,14 @@ extension MeterSource {
 }
 
 let captions = Captions(folder: files.base)
+let nowPlaying = NowPlayingCard(folder: files.base)
 var latestState = currentState()
 avatarView.show(latestState)
+// The bubbles and the card follow every drag step, not only the 10-per-second tick.
+avatarView.onMove = { photo in
+    captions.follow(photo: photo)
+    nowPlaying.follow(photo: photo)
+}
 
 Timer.scheduledTimer(withTimeInterval: tickSeconds, repeats: true) { _ in
     latestState = currentState()
@@ -647,6 +661,7 @@ Timer.scheduledTimer(withTimeInterval: tickSeconds, repeats: true) { _ in
     captions.update(speaking: MeterSource(state: latestState) == .bot, voicePending: isVoiceQueued(),
                     photo: avatarView.photoOnScreen,
                     avatarShown: avatarShown(), conversationOpen: conversationRunning())
+    nowPlaying.update(photo: avatarView.photoOnScreen, avatarShown: avatarShown())
 }
 // The bars move more often than the state is checked, so they follow the voice smoothly.
 Timer.scheduledTimer(withTimeInterval: meterTickSeconds, repeats: true) { _ in

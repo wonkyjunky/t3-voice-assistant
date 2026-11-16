@@ -16,5 +16,7 @@
     <string>1</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Shows the song playing in Chrome (YouTube, YouTube Music) or the Music app next to the avatar.</string>
 </dict>
 </plist>
