@@ -1,0 +1,40 @@
+# Personal settings and files made by install.sh
+assistant.conf
+/persona.md
+/assistant-name.txt
+assistant-system.md
+assistant-settings.json
+assistant-memory.md
+claude-md-milestone.md
+vocabulary.txt
+voice-thread-id
+voice-thread-id.previous
+
+# Your own media (see docs/AVATAR.md)
+avatar/*.mp4
+avatar.png
+sounds/*.caf
+voice_cache/
+
+# Built apps
+*.app/
+
+# Runtime state and logs
+*.log
+*.state
+talk.state
+talk.lock/
+speaking.*
+caption-*.txt
+level-*.txt
+*.tmp
+speech.lock
+speech-queue/
+speech-stopped
+primary-language
+night-digest.txt*
+last-sent
+conversation-end
+youtube-miss.html
+__pycache__/
+.DS_Store

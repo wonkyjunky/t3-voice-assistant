@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Shows the assistant's floating avatar (AssistantAvatar.app) once at login. Not restarted when closed. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.voice-assistant.avatar</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-g</string>
+        <string>-a</string>
+        <string>{{ASSISTANT_DIR}}/AssistantAvatar.app</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

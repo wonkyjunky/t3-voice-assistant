@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The assistant's morning briefing: every day at 12:00 hands the news kept overnight to its voice
+     thread (morning_digest.sh). Installed and removed by install.sh / uninstall.sh. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.voice-assistant.morning</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{ASSISTANT_DIR}}/morning_digest.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>12</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+</dict>
+</plist>

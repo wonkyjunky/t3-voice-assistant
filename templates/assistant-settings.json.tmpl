@@ -1,0 +1,54 @@
+{
+  "showThinkingSummaries": true,
+  "permissions": {
+    "allow": [
+      "Bash({{PYTHON}} -I {{ASSISTANT_DIR}}/mac_control.py:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} -I {{ASSISTANT_DIR}}/tool_guard.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__t3-code__t3_thread_launch|mcp__t3-code__create_threads|mcp__t3-code__t3_thread_configure",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} -I {{ASSISTANT_DIR}}/guard_launch.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} -I {{ASSISTANT_DIR}}/speak.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} -I {{ASSISTANT_DIR}}/memory_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

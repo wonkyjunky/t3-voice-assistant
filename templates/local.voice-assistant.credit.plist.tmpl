@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The assistant's ElevenLabs credit alert: every 6 hours (and at login) checks this month's voice
+     characters and tells the voice thread once per period when use passes 80% (credit_alert.py). -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.voice-assistant.credit</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON}}</string>
+        <string>-I</string>
+        <string>{{ASSISTANT_DIR}}/credit_alert.py</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>21600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

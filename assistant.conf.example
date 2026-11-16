@@ -1,0 +1,45 @@
+# Voice assistant settings. Copy to assistant.conf and fill in (install.sh does this the first time).
+# Plain KEY="value" lines: the shell scripts source this file and the Python scripts read it, so
+# keep every value in double quotes and use no backticks or $(...). $HOME is allowed.
+
+# Your assistant's name. It is shown on the avatar, used as the thread title, and added to the
+# words the listener expects. Its character and speech style are in persona.md (see docs/PERSONA.md).
+ASSISTANT_NAME_KO="하나"
+ASSISTANT_NAME_EN="Hana"
+
+# How the assistant addresses you: your name in English replies, the Korean form it calls you by,
+# and a shorter form it uses now and then (it can be the same).
+USER_NAME_EN="Alex"
+USER_CALL_KO="민준님"
+USER_SHORT_CALL_KO="민준님"
+
+# ElevenLabs (the voice). The API key is NOT stored here: install.sh puts it in the login Keychain.
+# ELEVENLABS_VOICE_ID: the voice id from ElevenLabs > Voices (for example your cloned voice).
+# ELEVENLABS_KEY_MONTHLY_LIMIT: the monthly character cap you set on the API key, "0" if none.
+ELEVENLABS_VOICE_ID=""
+ELEVENLABS_KEY_MONTHLY_LIMIT="0"
+
+# T3 Code: the t3 command, the provider instance you add for the assistant and its model, and the
+# instance and model that new work threads must use.
+T3_BIN="$HOME/.local/bin/t3"
+ASSISTANT_INSTANCE="claudeAgent_voice_assistant"
+ASSISTANT_MODEL="claude-sonnet-5-5"
+WORK_INSTANCE="claudeAgent"
+WORK_MODEL="claude-sonnet-5-5"
+
+# More folders (separated by ":") the assistant may read and search with its file tools, for
+# example your notes: "$HOME/Documents/Notes:$HOME/Projects". Empty means only this folder.
+# Files that look like secrets (.env, keys, credentials) stay closed everywhere.
+ASSISTANT_READ_FOLDERS=""
+
+# What it says after your name when a voice conversation starts, in your persona's style.
+GREETING="부르셨어요?"
+
+# Fixed phrases it says without asking the model, in your persona's style.
+PHRASE_GOODBYE="알겠어요, 또 불러 주세요!"
+# Said when the user ends a conversation in English ("bye", "that's all").
+PHRASE_GOODBYE_EN="Okay, talk to you later!"
+PHRASE_NO_THREAD="죄송해요, 보낼 스레드가 정해져 있지 않아요"
+PHRASE_SEND_FAILED="죄송해요, 메시지를 전하지 못했어요"
+PHRASE_NO_PERMISSION="마이크나 음성 인식 권한이 필요해요"
+PHRASE_LISTEN_FAILED="죄송해요, 듣기를 시작하지 못했어요"

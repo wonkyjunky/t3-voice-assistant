@@ -1,0 +1,17 @@
+# Words the assistant's listener should expect (one per line). Names here are recognized more reliably.
+# Add thread, project and people names you say often.
+# install.sh copies this to vocabulary.txt and adds the assistant's and your names from assistant.conf.
+스레드
+어시스턴트
+마스터
+코더
+리뷰어
+디자이너
+커밋
+푸시
+풀 리퀘스트
+PR
+워크로그
+T3
+유튜브
+볼륨
