@@ -22,8 +22,8 @@
 `persona.conf`에는 보통 이런 값을 적습니다.
 
 ```
-ASSISTANT_NAME_KO="은서"
-ASSISTANT_NAME_EN="Eunseo"
+ASSISTANT_NAME_KO="소라"
+ASSISTANT_NAME_EN="Sora"
 ELEVENLABS_VOICE_ID="..."            # 그 비서의 목소리 (""면 macOS Yuna 목소리)
 ASSISTANT_INSTANCE="claudeAgent_voice_assistant_second"   # 그 비서의 T3 인스턴스
 GREETING="부르셨어요?"                # 선택: 그 비서만의 인사말과 호칭

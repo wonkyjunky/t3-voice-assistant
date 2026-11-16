@@ -220,11 +220,11 @@ do {
 
 // Assistants to pick in the menu: their names from assistant-name.txt.
 do {
-    let names = parsePersonaNames("은서\nEunseo\n")
-    expect(names?.korean == "은서" && names?.english == "Eunseo", "Korean then English name")
+    let names = parsePersonaNames("소라\nSora\n")
+    expect(names?.korean == "소라" && names?.english == "Sora", "Korean then English name")
     expect(parsePersonaNames("하나\n")?.english == "하나", "no English name uses the Korean one")
     expect(parsePersonaNames("\n \n") == nil, "an empty file gives no names")
-    expect(placeholderPhoto(name: "은서", side: 100).size == NSSize(width: 100, height: 100), "a stand-in photo is drawn")
+    expect(placeholderPhoto(name: "소라", side: 100).size == NSSize(width: 100, height: 100), "a stand-in photo is drawn")
 }
 
 print(failures == 0 ? "all passed" : "\(failures) failed")

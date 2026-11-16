@@ -22,8 +22,8 @@ Each extra assistant is a folder in `personas/` (the folder name is its id, for 
 A `persona.conf` usually sets:
 
 ```
-ASSISTANT_NAME_KO="은서"
-ASSISTANT_NAME_EN="Eunseo"
+ASSISTANT_NAME_KO="소라"
+ASSISTANT_NAME_EN="Sora"
 ELEVENLABS_VOICE_ID="..."            # its own voice ("" uses the macOS Yuna voice)
 ASSISTANT_INSTANCE="claudeAgent_voice_assistant_second"   # its own T3 instance
 GREETING="부르셨어요?"                # optional: its own greeting and form of address
