@@ -197,8 +197,8 @@ do {
            == [pausedVideo, musicSong], "a row paused a moment ago stays, in the same order")
     expect(visibleRows([], lastPlayingAt: [:], now: now).isEmpty, "nothing anywhere shows nothing")
     expect(cardShows(song, lastPlayingAt: nil, now: now), "a playing song shows")
-    expect(cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-30), now: now),
-           "a song paused half a minute ago still shows, to be played again")
+    expect(cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-10), now: now),
+           "a song paused a few seconds ago still shows, to be played again")
     expect(!cardShows(pausedVideo, lastPlayingAt: now.addingTimeInterval(-(pausedCardSeconds + 1)), now: now),
            "a song paused long ago hides")
     expect(!cardShows(pausedVideo, lastPlayingAt: nil, now: now), "a song never seen playing hides")

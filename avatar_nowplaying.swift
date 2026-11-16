@@ -52,7 +52,7 @@ let nowPlayingCheckSeconds: TimeInterval = 3
 let nowPlayingScriptTimeout: TimeInterval = 2.5
 let nowPlayingShownDefaultsKey = "nowPlayingShown"
 // A paused song keeps its card this long, so it can be played again from the card.
-let pausedCardSeconds: TimeInterval = 120
+let pausedCardSeconds: TimeInterval = 30
 let chromeBundleID = "com.google.Chrome"
 let musicBundleID = "com.apple.Music"
 let youtubeTitleSuffixes = [" - YouTube Music", " - YouTube"]
