@@ -2,9 +2,10 @@
 
 AppleScript can search only the Music library, so the catalog is searched with Apple's public
 iTunes Search API (no key). The song's page is then opened in Music and played. Music is started
-hidden when it is not running, and put out of sight again once the song plays (opening a page
-brings a running Music to the front), so the app in front stays in front. When the user has Music
-itself in front, it is left as it is.
+hidden when it is not running. Opening a song page shows a hidden Music again, so while the song
+is found a small watcher hides Music every 20 ms for 15 seconds (a recording showed no frame of
+its window; Music shows itself again a few seconds after the song starts, so the watcher runs on
+past that), and the app in front stays in front. When the user has Music itself in front, it is left as it is.
 
 Opening a song page only shows it, and "play" then starts its album from the first track. So
 playing takes these steps: stop what plays, open the page, turn Music's volume down, play, skip
@@ -12,6 +13,7 @@ ahead until Music reports that very song, start it from the beginning, and give 
 """
 import json
 import re
+import subprocess
 import urllib.parse
 
 OSASCRIPT = "/usr/bin/osascript"
@@ -78,6 +80,29 @@ function run(argv) {
     return 'hidden';
 }
 """
+
+
+# Hides Music every 20 ms for argument 1 seconds: a page opening in Music shows its window again,
+# and hiding it this often keeps it from ever being drawn.
+HIDE_LOOP_JS = """
+ObjC.import('AppKit');
+function run(argv) {
+    const end = Date.now() + Number(argv[0]) * 1000;
+    while (Date.now() < end) {
+        const music = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.Music').firstObject;
+        if (!music.isNil()) music.hide;
+        delay(0.02);
+    }
+    return 'done';
+}
+"""
+HIDE_LOOP_SECONDS = 15
+
+
+def spawn_process(args):
+    """Starts a helper in the background; it ends on its own."""
+    return subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 def front_app(runner):
@@ -205,9 +230,10 @@ def play_song(runner, song, sleep, clock, before=None):
     return found
 
 
-def play_from_catalog(words, runner, fetch, sleep, clock, before=None):
+def play_from_catalog(words, runner, fetch, sleep, clock, before=None, spawn=None):
     """Finds words in the Apple Music catalog and plays the first song. Prints one line. before is
-    the app that was in front, to keep there."""
+    the app that was in front, to keep there; spawn starts the hiding watcher in the background,
+    which runs on after this returns."""
     songs = parse_songs(fetch(search_url(words)))
     if not songs:
         print("no song matched in Apple Music")
@@ -216,6 +242,8 @@ def play_from_catalog(words, runner, fetch, sleep, clock, before=None):
         print("the Music app did not start")
         return EXIT_FAILED
     song = songs[0]
+    if spawn is not None and before != MUSIC_BUNDLE_ID:
+        spawn([OSASCRIPT, "-l", "JavaScript", "-e", HIDE_LOOP_JS, str(HIDE_LOOP_SECONDS)])
     played = play_song(runner, song, sleep, clock, before)
     keep_out_of_sight(runner, before)
     if not played:

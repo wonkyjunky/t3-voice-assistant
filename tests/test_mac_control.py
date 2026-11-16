@@ -22,11 +22,23 @@ class FakeRunner:
         return mc.Result(*answer)
 
 
-def run_cli(argv, runner, state_dir=None, fetch=None):
+def run_cli(argv, runner, state_dir=None, fetch=None, spawned=None):
     state_dir = Path(state_dir or tempfile.mkdtemp())
     fetch = fetch or (lambda url: None)
     clock = FakeClock()
-    return mc.main(argv, runner=runner, state_dir=state_dir, fetch=fetch, sleep=clock.sleep, clock=clock)
+    return mc.main(argv, runner=runner, state_dir=state_dir, fetch=fetch, sleep=clock.sleep, clock=clock,
+                   spawn=spawned.start if spawned else FakeSpawn().start)
+
+
+class FakeSpawn:
+    """Records background helpers instead of starting them (the real one hides the real Music)."""
+
+    def __init__(self):
+        self.started = []
+
+    def start(self, args):
+        self.started.append(args)
+        return self
 
 
 # What the state checks before starting music see when nothing else plays: no Chrome tab, Music closed.
@@ -203,14 +215,21 @@ class MusicTests(unittest.TestCase):
 
     def test_music_is_put_out_of_sight_and_the_app_in_front_comes_back(self):
         runner = MusicApp(running=True, loads_after=0, front="com.apple.Safari")
-        self.assertEqual(run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER), mc.EXIT_OK)
+        spawned = FakeSpawn()
+        self.assertEqual(run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER, spawned=spawned),
+                         mc.EXIT_OK)
+        self.assertEqual(len(spawned.started), 1, "a watcher keeps Music hidden while the page opens")
+        self.assertIn(mc.apple_music.HIDE_LOOP_JS, spawned.started[0])
+        self.assertEqual(spawned.started[0][-1], str(mc.apple_music.HIDE_LOOP_SECONDS), "and runs on past the start")
         self.assertTrue(runner.put_out_of_sight, "Music is hidden once the song plays")
         self.assertEqual(set(runner.put_out_of_sight), {"com.apple.Safari"})
 
     def test_music_in_front_is_left_alone(self):
         runner = MusicApp(running=True, loads_after=0, front="com.apple.Music")
-        run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER)
+        spawned = FakeSpawn()
+        run_cli(["music", "song", "shika"], runner, fetch=lambda url: CATALOG_ANSWER, spawned=spawned)
         self.assertEqual(runner.put_out_of_sight, [], "the user is using Music, so it stays")
+        self.assertEqual(spawned.started, [])
 
     def test_closed_music_app_is_started_hidden(self):
         runner = MusicApp(running=False, loads_after=0)

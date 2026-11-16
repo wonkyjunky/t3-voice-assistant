@@ -256,6 +256,7 @@ class Context:
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     leave_others: bool = False
+    spawn: Callable[[list], object] = apple_music.spawn_process
 
 
 class UsageError(Exception):
@@ -398,7 +399,7 @@ def play_song(words, ctx):
         apple_music.keep_out_of_sight(ctx.runner, before)
         print(f"playing {found.stdout}")
         return EXIT_OK
-    return apple_music.play_from_catalog(words, ctx.runner, ctx.fetch, ctx.sleep, ctx.clock, before)
+    return apple_music.play_from_catalog(words, ctx.runner, ctx.fetch, ctx.sleep, ctx.clock, before, ctx.spawn)
 
 
 def duck_music(runner, state_file):
@@ -699,13 +700,13 @@ HANDLERS = {"volume": handle_volume, "music": handle_music, "youtube": handle_yo
 
 
 def main(argv=None, runner=system_runner, state_dir=DEFAULT_STATE_DIR, fetch=fetch_page, sleep=time.sleep,
-         clock=time.monotonic):
+         clock=time.monotonic, spawn=apple_music.spawn_process):
     try:
         options = build_parser().parse_args(argv)
     except SystemExit as stop:
         return EXIT_OK if stop.code == 0 else EXIT_USAGE
     try:
-        return HANDLERS[options.group](options, Context(runner, state_dir, fetch, sleep, clock, options.leave_others))
+        return HANDLERS[options.group](options, Context(runner, state_dir, fetch, sleep, clock, options.leave_others, spawn))
     except UsageError as error:
         print(f"mac_control: {error}", file=sys.stderr)
         return EXIT_USAGE
