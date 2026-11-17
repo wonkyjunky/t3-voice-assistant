@@ -279,7 +279,7 @@ Claude 스레드가 기능 완성, 테스트 통과, PR, 배포, 막힘 같은 �
 | 잘 알아들었으면 하는 단어 | `vocabulary.txt` | 다음 대화부터 |
 | 아바타 영상 | `avatar/*.mp4` (`tools/prepare_clip.sh`) | 아바타 오른쪽 클릭 > 닫기 후 다시 열기 |
 | 듣기 신호음 | `sounds/cue.caf` | 다음 대화부터 |
-| 조용한 시간 | 아바타 메뉴 > 조용한 시간(시작, 끝, 켜고 끄기, Mac 시계 기준. `quiet-hours`에 저장) | 바로 |
+| 조용한 시간 | 아바타 메뉴 > 조용한 시간(시작, 끝, 켜고 끄기, Mac 시계 기준. `quiet-hours`에 저장), 또는 비서에게 말로("조용한 시간 1시부터 8시로 바꿔 줘") | 바로 |
 
 ## 문제 해결
 
@@ -333,7 +333,7 @@ T3 Code의 비서 인스턴스(단축어 앱으로 단축어를 만들었다면 
 | `music_sources.py` | Chrome과 Music 앱 사이에서 음악을 한 곳에서만 나오게 하기, `playing` 명령 |
 | `credit_alert.py` | ElevenLabs 사용량 80% 알림 |
 | `morning_digest.sh` | 아침 브리핑. 매시간 확인해서 조용한 시간이 끝나면 보냄 |
-| `quiet_hours.py` | 아바타 메뉴에서 고른 조용한 시간을 읽음 |
+| `quiet_hours.py` | 조용한 시간을 읽고 저장(아바타 메뉴, `mac_control.py quiet`) |
 | `install.sh`, `uninstall.sh` | 설치와 제거 |
 | `make_signing_identity.sh`, `sign_app.sh`, `signing_env.sh` | 고정 서명 |
 | `assistant_config.py`, `assistant.conf.example` | 개인 설정 읽기와 예시 |

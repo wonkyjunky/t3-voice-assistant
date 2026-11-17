@@ -1,8 +1,8 @@
 """Quiet hours: the hours of the Mac's clock in which news from other threads waits for the morning.
 
-The avatar's menu ("Quiet hours") writes the file "quiet-hours" next to the app: one line "23 12"
-(from 23:00 until 12:00), or "off 23 12" when quiet hours are turned off (the hours are kept for
-when they are turned on again). No file, or one that cannot be read, means 23:00 to 12:00.
+The avatar's menu ("Quiet hours") and mac_control.py quiet (asked by voice) write the file
+"quiet-hours" next to the app: one line "23 12" (from 23:00 until 12:00), or "off 23 12" when quiet
+hours are turned off (the hours are kept for when they are turned on again). No file, or one that cannot be read, means 23:00 to 12:00.
 A start equal to the end means no quiet hours at all.
 
 speak.py asks in_quiet_hours() before speaking a report; morning_digest.sh runs every hour and
@@ -45,6 +45,28 @@ def load(path=None):
             return parse(handle.read())
     except OSError:
         return DEFAULT_SETTING
+
+
+def text_of(setting):
+    on, start, end = setting
+    return f"{'' if on else OFF_WORD + ' '}{start} {end}\n"
+
+
+def save(setting, path=None):
+    """Written whole, then moved into place, so a reader never sees half a line."""
+    target = path or SETTING_PATH
+    temporary = f"{target}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(text_of(setting))
+    os.replace(temporary, target)
+
+
+def describe(setting):
+    on, start, end = setting
+    span = f"{start:02d}:00-{end:02d}:00"
+    if not on or start == end:
+        return f"quiet hours off ({span} kept for when they are turned on)"
+    return f"quiet hours on, {span} by the Mac's clock"
 
 
 def in_quiet_hours(now=None, setting=None):

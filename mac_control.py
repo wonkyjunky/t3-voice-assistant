@@ -17,6 +17,7 @@ run argument, never inside the script source, so it cannot inject AppleScript.
   youtube volume <0-100>    the volume of YouTube playing in Chrome (the Mac's volume stays)
   playing pause | resume | next | now   whatever plays: YouTube in Chrome or the Music app
   app open <name> | app quit <name>
+  quiet get | on | off | set <start hour> <end hour>   quiet hours (quiet_hours.py), 0-23 by the Mac's clock
 
 Music plays in one place at a time: music play | song | playlist and youtube play | resume pause
 music playing in the other place first (music_sources.py). --leave-others (before the command)
@@ -44,6 +45,7 @@ from typing import Callable, Optional
 # Run as python3 -I, which leaves this folder off the import path; its own modules live here.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import apple_music  # noqa: E402
+import quiet_hours  # noqa: E402
 import music_sources  # noqa: E402
 
 EXIT_OK = 0
@@ -673,6 +675,38 @@ def handle_app(options, ctx):
     return report(quit_result, f"quit {name}")
 
 
+def parse_hour(text):
+    try:
+        hour = int(text)
+    except (TypeError, ValueError):
+        return None
+    return hour if 0 <= hour < quiet_hours.HOURS_IN_DAY else None
+
+
+def handle_quiet(options, ctx):
+    """Quiet hours, the same setting as the avatar's menu, saved next to the app."""
+    path = Path(ctx.state_dir) / "quiet-hours"
+    on, start, end = quiet_hours.load(path)
+    if options.action == "get":
+        print(quiet_hours.describe((on, start, end)))
+        return EXIT_OK
+    if options.action == "set":
+        hours = [parse_hour(word) for word in options.hours]
+        if len(hours) != 2 or None in hours:
+            raise UsageError("quiet set needs a start and an end hour from 0 to 23")
+        setting = (True, hours[0], hours[1])
+    else:
+        setting = (options.action == "on", start, end)
+    try:
+        quiet_hours.save(setting, path)
+    except OSError as error:
+        print(f"mac_control: {error}", file=sys.stderr)
+        print("could not save the quiet hours")
+        return EXIT_FAILED
+    print(quiet_hours.describe(setting))
+    return EXIT_OK
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="mac_control.py", description="the assistant's Mac controls")
     parser.add_argument("--leave-others", action="store_true",
@@ -692,11 +726,14 @@ def build_parser():
     app = groups.add_parser("app")
     app.add_argument("action", choices=["open", "quit"])
     app.add_argument("name", nargs="*")
+    quiet = groups.add_parser("quiet")
+    quiet.add_argument("action", choices=["get", "on", "off", "set"])
+    quiet.add_argument("hours", nargs="*")
     return parser
 
 
 HANDLERS = {"volume": handle_volume, "music": handle_music, "youtube": handle_youtube, "playing": handle_playing,
-            "app": handle_app}
+            "app": handle_app, "quiet": handle_quiet}
 
 
 def main(argv=None, runner=system_runner, state_dir=DEFAULT_STATE_DIR, fetch=fetch_page, sleep=time.sleep,

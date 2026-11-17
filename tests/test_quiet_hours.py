@@ -59,5 +59,19 @@ class InQuietHoursTests(unittest.TestCase):
         self.assertFalse(quiet_hours.in_quiet_hours(at(2), quiet_hours.load(path)))
 
 
+class SaveTests(unittest.TestCase):
+    def test_what_is_saved_reads_back_the_same(self):
+        path = Path(tempfile.mkdtemp()) / "quiet-hours"
+        for setting in ((True, 1, 8), (False, 23, 12)):
+            quiet_hours.save(setting, path)
+            self.assertEqual(quiet_hours.load(path), setting)
+        self.assertEqual(path.read_text(encoding="utf-8"), "off 23 12\n")
+
+    def test_the_description_names_the_hours(self):
+        self.assertEqual(quiet_hours.describe((True, 1, 8)), "quiet hours on, 01:00-08:00 by the Mac's clock")
+        self.assertIn("off", quiet_hours.describe((False, 23, 12)))
+        self.assertIn("off", quiet_hours.describe((True, 9, 9)))
+
+
 if __name__ == "__main__":
     unittest.main()

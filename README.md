@@ -287,7 +287,7 @@ The conversation ends on its own after silence or 30 turns. After the assistant 
 | Words it should recognize better | `vocabulary.txt` | From the next conversation |
 | Avatar clips | `avatar/*.mp4` (`tools/prepare_clip.sh`) | Right-click the avatar > close, then reopen |
 | Listening cue | `sounds/cue.caf` | From the next conversation |
-| Quiet hours | The avatar's menu > Quiet hours (start, end, on or off, by the Mac's clock; saved in `quiet-hours`) | Right away |
+| Quiet hours | The avatar's menu > Quiet hours (start, end, on or off, by the Mac's clock; saved in `quiet-hours`), or ask the assistant ("조용한 시간 1시부터 8시로 바꿔 줘") | Right away |
 
 ## Troubleshooting
 
@@ -341,7 +341,7 @@ Remove the assistant's T3 Code instance (and a Shortcuts app shortcut, if you ma
 | `music_sources.py` | One music at a time across Chrome and the Music app, and the `playing` commands |
 | `credit_alert.py` | The 80% ElevenLabs usage alert |
 | `morning_digest.sh` | The morning briefing, checked every hour and sent once quiet hours end |
-| `quiet_hours.py` | Reads the quiet hours picked in the avatar's menu |
+| `quiet_hours.py` | Reads and saves the quiet hours (the avatar's menu, `mac_control.py quiet`) |
 | `install.sh`, `uninstall.sh` | Install and uninstall |
 | `make_signing_identity.sh`, `sign_app.sh`, `signing_env.sh` | Stable code signing |
 | `assistant_config.py`, `assistant.conf.example` | Reading the personal settings, and their example |

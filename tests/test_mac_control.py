@@ -517,5 +517,37 @@ class CliTests(unittest.TestCase):
         self.assertEqual(run_cli(["dance"], FakeRunner()), mc.EXIT_USAGE)
 
 
+class QuietTests(unittest.TestCase):
+    """quiet changes the same quiet-hours file as the avatar's menu."""
+
+    def setUp(self):
+        self.state_dir = Path(tempfile.mkdtemp())
+        self.setting = self.state_dir / "quiet-hours"
+
+    def quiet(self, *words):
+        return run_cli(["quiet", *words], FakeRunner(), self.state_dir)
+
+    def test_get_shows_the_default_without_a_file(self):
+        self.assertEqual(self.quiet("get"), mc.EXIT_OK)
+        self.assertFalse(self.setting.exists())
+
+    def test_set_saves_the_hours_and_turns_them_on(self):
+        self.setting.write_text("off 23 12\n", encoding="utf-8")
+        self.assertEqual(self.quiet("set", "1", "8"), mc.EXIT_OK)
+        self.assertEqual(self.setting.read_text(encoding="utf-8"), "1 8\n")
+
+    def test_off_and_on_keep_the_hours(self):
+        self.quiet("set", "22", "7")
+        self.assertEqual(self.quiet("off"), mc.EXIT_OK)
+        self.assertEqual(self.setting.read_text(encoding="utf-8"), "off 22 7\n")
+        self.quiet("on")
+        self.assertEqual(self.setting.read_text(encoding="utf-8"), "22 7\n")
+
+    def test_bad_hours_change_nothing(self):
+        for words in (("set", "24", "7"), ("set", "1"), ("set", "a", "b"), ("set", "1", "2", "3")):
+            self.assertEqual(self.quiet(*words), mc.EXIT_USAGE, words)
+        self.assertFalse(self.setting.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
