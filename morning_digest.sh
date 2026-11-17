@@ -3,8 +3,9 @@
 # speak.py during quiet hours) to the voice thread of the assistant picked in the avatar's menu
 # (persona.py), so the one whose voice and face are in use greets and sums it up aloud.
 #
-# Run every day at 12:00 by the LaunchAgent local.voice-assistant.morning (if the Mac was asleep,
-# launchd runs it at the next wake). Does nothing when there is no news.
+# Run every hour by the LaunchAgent local.voice-assistant.morning (if the Mac was asleep, launchd
+# runs it at the next wake). Does nothing during quiet hours (quiet_hours.py, set in the avatar's
+# menu), so the news goes out in the first hour after they end, and nothing when there is no news.
 # Logs only the number of lines handed over, never the news itself.
 
 set -u
@@ -28,6 +29,7 @@ log() {
 }
 
 [ -s "$DIGEST" ] || exit 0
+/opt/homebrew/bin/python3 -I "$HERE/quiet_hours.py" now && exit 0
 
 thread_id="$(tr -d '[:space:]' < "$ID_FILE" 2>/dev/null)"
 if [ -z "$thread_id" ]; then

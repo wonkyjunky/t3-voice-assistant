@@ -227,5 +227,19 @@ do {
     expect(placeholderPhoto(name: "소라", side: 100).size == NSSize(width: 100, height: 100), "a stand-in photo is drawn")
 }
 
+// Quiet hours: the file "quiet-hours" that the menu writes and quiet_hours.py reads.
+do {
+    expect(QuietHours.parse("22 7\n") == QuietHours(on: true, start: 22, end: 7), "the hours are read")
+    expect(QuietHours.parse("off 22 7\n") == QuietHours(on: false, start: 22, end: 7), "off keeps the hours")
+    for broken in ["", "garbage", "25 7", "22", "22 7 9", "off"] {
+        expect(QuietHours.parse(broken) == .standard, "unreadable '\(broken)' means 23:00 to 12:00")
+    }
+    let hours = QuietHours(on: false, start: 1, end: 8)
+    expect(QuietHours.parse(hours.text) == hours, "what is saved reads back the same")
+    expect(QuietHours.standard.span == "23:00–12:00", "the menu shows the hours as a span")
+    expect(QuietHours.standard.with(start: 0) == QuietHours(on: true, start: 0, end: 12), "one hour changes, the rest stays")
+}
+
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

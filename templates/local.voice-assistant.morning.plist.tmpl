@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The assistant's morning briefing: every day at 12:00 hands the news kept overnight to its voice
-     thread (morning_digest.sh). Installed and removed by install.sh / uninstall.sh. -->
+<!-- The assistant's morning briefing: every hour, on the hour, morning_digest.sh checks for news
+     kept during quiet hours and hands it to the voice thread once they are over.
+     Installed and removed by install.sh / uninstall.sh. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -13,8 +14,6 @@
     </array>
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>
-        <integer>12</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>

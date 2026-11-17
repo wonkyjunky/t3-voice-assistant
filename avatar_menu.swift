@@ -1,6 +1,6 @@
 // The avatar's menu, shown from an icon in the menu bar and on a right-click on the photo: the
 // current state, starting or ending a conversation, what is shown (the avatar, captions, sound
-// bars), the avatar's size and place, the ElevenLabs characters left, and quitting.
+// bars), quiet hours, the avatar's size and place, the ElevenLabs characters left, and quitting.
 //
 // The menu bar icon follows the state, so it says what is going on even when the avatar is hidden.
 
@@ -128,6 +128,7 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         menu.addItem(hotkeyMenuItem())
         menu.addItem(languageMenuItem())
         menu.addItem(menuLanguageMenuItem())
+        menu.addItem(quietHoursMenuItem())
         menu.addItem(.separator())
         add(ui("Show avatar", "아바타 보이기"), #selector(toggleAvatar), checked: avatarShown(), to: menu)
         add(ui("Show captions", "자막 보이기"), #selector(toggleCaptions), checked: captionsShown(), to: menu)
@@ -194,6 +195,36 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         }
         let item = NSMenuItem(title: ui("Menu language: English", "메뉴 언어: 한국어"), action: nil, keyEquivalent: "")
         item.submenu = languages
+        return item
+    }
+
+    // "Quiet hours: 23:00–12:00": on or off, and the hour they start and end, by the Mac's clock.
+    private func quietHoursMenuItem() -> NSMenuItem {
+        let current = savedQuietHours(base: files.base)
+        let choices = NSMenu()
+        let clock = DateFormatter()
+        clock.dateFormat = "HH:mm"
+        let note = NSMenuItem(title: ui("By the Mac's clock, now \(clock.string(from: Date()))",
+                                        "Mac 시계 기준, 지금 \(clock.string(from: Date()))"), action: nil, keyEquivalent: "")
+        note.isEnabled = false
+        choices.addItem(note)
+        choices.addItem(.separator())
+        add(ui("Keep reports for later", "알림은 나중에 듣기"), #selector(toggleQuietHours), checked: current.on, to: choices)
+        choices.addItem(hourMenuItem(ui("Starts", "시작"), chosen: current.start, action: #selector(chooseQuietStart(_:))))
+        choices.addItem(hourMenuItem(ui("Ends", "끝"), chosen: current.end, action: #selector(chooseQuietEnd(_:))))
+        let shown = current.on ? current.span : ui("off", "끔")
+        let item = NSMenuItem(title: "\(ui("Quiet hours", "조용한 시간")): \(shown)", action: nil, keyEquivalent: "")
+        item.submenu = choices
+        return item
+    }
+
+    private func hourMenuItem(_ title: String, chosen: Int, action: Selector) -> NSMenuItem {
+        let hours = NSMenu()
+        for hour in 0..<QuietHours.hoursInDay {
+            add(QuietHours.clock(hour), action, checked: hour == chosen, to: hours).tag = hour
+        }
+        let item = NSMenuItem(title: "\(title): \(QuietHours.clock(chosen))", action: nil, keyEquivalent: "")
+        item.submenu = hours
         return item
     }
 
@@ -266,6 +297,19 @@ final class AvatarMenu: NSObject, NSMenuDelegate {
         } catch {
             NSLog("assistant_avatar: cannot save the primary language: \(error.localizedDescription)")
         }
+    }
+
+    @objc private func toggleQuietHours() {
+        let current = savedQuietHours(base: files.base)
+        saveQuietHours(current.with(on: !current.on), base: files.base)
+    }
+
+    @objc private func chooseQuietStart(_ sender: NSMenuItem) {
+        saveQuietHours(savedQuietHours(base: files.base).with(start: sender.tag), base: files.base)
+    }
+
+    @objc private func chooseQuietEnd(_ sender: NSMenuItem) {
+        saveQuietHours(savedQuietHours(base: files.base).with(end: sender.tag), base: files.base)
     }
 
     @objc private func toggleAvatar() {

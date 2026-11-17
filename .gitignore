@@ -36,6 +36,7 @@ speech.lock
 speech-queue/
 speech-stopped
 primary-language
+quiet-hours
 night-digest.txt*
 last-sent
 voice-sent

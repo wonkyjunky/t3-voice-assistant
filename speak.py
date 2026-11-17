@@ -41,10 +41,9 @@ END_TAG = "[end_conversation]"
 # Cleaning for speech drops underscores, so also accept [endconversation], any case or spacing.
 END_TAG_PATTERN = re.compile(r"\[\s*end[\s_]*conversation\s*\]", re.IGNORECASE)
 END_FLAG_PATH = os.path.join(HERE, "conversation-end")
-# Quiet hours: outside a voice conversation, replies are not spoken but kept for the morning
-# briefing (morning_digest.sh, run at 12:00 by the LaunchAgent local.voice-assistant.morning).
-QUIET_START_HOUR = 23
-QUIET_END_HOUR = 12
+# Quiet hours (quiet_hours.py, picked in the avatar's menu, 23:00 to 12:00 by default): outside a
+# voice conversation, reports are not spoken but kept for the morning briefing (morning_digest.sh,
+# run every hour by the LaunchAgent local.voice-assistant.morning, sends once quiet hours are over).
 DIGEST_PATH = os.path.join(HERE, "night-digest.txt")
 CONVERSATION_LOCK_PID = os.path.join(HERE, "talk.lock", "pid")
 VOICE_TAG = re.compile(r"\[[^\[\]\n]{1,40}\]\s*")
@@ -196,8 +195,9 @@ def take_end_tag(text):
 
 
 def in_quiet_hours(now=None):
-    hour = (now or datetime.now()).hour
-    return hour >= QUIET_START_HOUR or hour < QUIET_END_HOUR
+    sys.path.insert(0, HERE)
+    import quiet_hours
+    return quiet_hours.in_quiet_hours(now)
 
 
 def conversation_running():
