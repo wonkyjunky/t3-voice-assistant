@@ -242,6 +242,15 @@ REPORT_PREFIX = ("[마일스톤]", "[알림]")
 # the voice system or another thread, not from the user typing; they are spoken like what the
 # user says aloud.
 AUTOMATIC_TAG = re.compile(r"\s*\[[^\[\]\n]{1,40}\]")
+# T3 Code puts one line in front of a message that came through its tools, such as "[T3 Code: this
+# message came through T3 Code's tools, not from the user typing in this chat.]" and a blank line.
+# It is not part of what was sent, so it is left out before the words are compared or tagged.
+T3_NOTICE = re.compile(r"\A\[T3 Code: [^\n]*\]\n\n")
+
+
+def without_t3_notice(text):
+    """The message without the notice line T3 Code puts in front of messages sent through its tools."""
+    return T3_NOTICE.sub("", text, count=1)
 
 
 def last_user_text(transcript_path):
@@ -263,7 +272,7 @@ def last_user_text(transcript_path):
                 texts = [block.get("text", "") for block in content if block.get("type") == "text"]
                 if texts:
                     last = texts[0]
-    return last
+    return without_t3_notice(last)
 
 
 def answers_a_report(transcript_path):

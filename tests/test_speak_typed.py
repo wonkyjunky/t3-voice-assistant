@@ -85,6 +85,48 @@ class TypedInChatTests(unittest.TestCase):
         self.assertFalse(speak.typed_in_chat(path, now=NOW))
 
 
+class T3NoticeTests(unittest.TestCase):
+    """T3 Code puts a one-line notice in front of messages that came through its tools (t3 thread
+    send, thread-send tools). The notice is not part of what was said or sent."""
+
+    TOOLS_NOTICE = "[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]"
+    AGENT_NOTICE = '[T3 Code: the agent in T3 thread "abc12345" sent this message, not the user.]'
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.saved = speak.VOICE_SENT_PATH
+        speak.VOICE_SENT_PATH = str(Path(self.folder) / "voice-sent")
+
+    def tearDown(self):
+        speak.VOICE_SENT_PATH = self.saved
+
+    def said(self, text):
+        with open(speak.VOICE_SENT_PATH, "a", encoding="utf-8") as handle:
+            handle.write(f"{NOW - 5} {digest(text)}\n")
+
+    def test_words_sent_by_the_voice_system_are_spoken_despite_the_notice(self):
+        self.said("Hey there how are you doing today")
+        path = transcript(self.folder, self.TOOLS_NOTICE + "\n\nHey there how are you doing today")
+        self.assertFalse(speak.typed_in_chat(path, now=NOW))
+
+    def test_tagged_messages_from_other_threads_are_spoken_despite_the_notice(self):
+        for text in ("[CatCon 답변] 네, 먼저 올릴게요.", "[마일스톤] 앱: 다 됐어요."):
+            path = transcript(self.folder, self.AGENT_NOTICE + "\n\n" + text)
+            self.assertFalse(speak.typed_in_chat(path, now=NOW), text)
+
+    def test_a_report_behind_the_notice_is_still_a_report(self):
+        path = transcript(self.folder, self.AGENT_NOTICE + "\n\n[마일스톤] 앱: 다 됐어요.")
+        self.assertTrue(speak.answers_a_report(path))
+
+    def test_untagged_tool_messages_not_sent_by_voice_stay_in_the_chat(self):
+        path = transcript(self.folder, self.AGENT_NOTICE + "\n\nSay hello in one sentence.")
+        self.assertTrue(speak.typed_in_chat(path, now=NOW))
+
+    def test_a_typed_message_that_only_looks_like_a_notice_is_left_alone(self):
+        self.assertEqual(speak.without_t3_notice("[T3 Code is fun] see you"), "[T3 Code is fun] see you")
+        self.assertEqual(speak.without_t3_notice("hello"), "hello")
+
+
 class VoiceThreadTests(unittest.TestCase):
     def test_every_assistants_thread_counts_as_a_voice_thread(self):
         folder = Path(tempfile.mkdtemp())
